@@ -1,0 +1,16 @@
+enum AppIcons {
+    static let play = "play.fill"
+    static let pause = "pause.fill"
+    static let next = "forward.fill"
+    static let previous = "backward.fill"
+    static let shuffle = "shuffle"
+    static let repeatMode = "repeat"
+    static let heart = "heart"
+    static let heartFill = "heart.fill"
+    static let music = "music.note"
+    static let search = "magnifyingglass"
+    static let library = "square.stack"
+    static let more = "ellipsis"
+    static let lyrics = "text.quote"
+    static let queue = "list.bullet"
+}
