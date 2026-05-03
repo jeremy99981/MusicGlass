@@ -5,6 +5,10 @@
 <h1 align="center">MusicGlass</h1>
 
 <p align="center">
+  <strong>🇬🇧 English</strong> | <a href="README.fr.md">🇫🇷 Français</a>
+</p>
+
+<p align="center">
   <strong>A premium, native iOS music player featuring a stunning "Liquid Glass" interface, powered by YouTube Music discovery.</strong>
 </p>
 
