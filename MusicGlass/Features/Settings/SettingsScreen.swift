@@ -3,7 +3,9 @@ import SwiftUI
 struct SettingsScreen: View {
     @StateObject var viewModel: SettingsViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showingLogin = false
+    @AppStorage("musicglass.loginFlowInProgress") private var loginFlowInProgress = false
     @ObservedObject private var authService: AuthService
 
     init(viewModel: SettingsViewModel) {
@@ -25,6 +27,7 @@ struct SettingsScreen: View {
                     } else {
                         LabeledContent("Statut", value: "Non connecté")
                         Button {
+                            loginFlowInProgress = true
                             showingLogin = true
                         } label: {
                             Text("Se connecter à YouTube Music")
@@ -72,10 +75,35 @@ struct SettingsScreen: View {
                 }
             }
             .task { viewModel.loadCacheSize() }
+            .onAppear {
+                if loginFlowInProgress, !authService.isAuthenticated {
+                    showingLogin = true
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                // If the login sheet was closed by an app switch, reopen it on return.
+                if loginFlowInProgress, !showingLogin, !authService.isAuthenticated {
+                    showingLogin = true
+                }
+            }
             .sheet(isPresented: $showingLogin) {
-                LoginWebView(onLoginSuccess: { cookies, dataSyncId, visitorData in
-                    authService.saveAuthData(cookies: cookies, dataSyncId: dataSyncId, visitorData: visitorData)
-                }, isPresented: $showingLogin)
+                NavigationStack {
+                    LoginWebView(onLoginSuccess: { cookies, dataSyncId, visitorData in
+                        authService.saveAuthData(cookies: cookies, dataSyncId: dataSyncId, visitorData: visitorData)
+                        loginFlowInProgress = false
+                    }, isPresented: $showingLogin)
+                    .navigationTitle("Connexion")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Fermer") {
+                                loginFlowInProgress = false
+                                showingLogin = false
+                            }
+                        }
+                    }
+                }
             }
         }
     }

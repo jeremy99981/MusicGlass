@@ -1,72 +1,92 @@
-# MusicGlass
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jeremy99981/MusicGlass/main/MusicGlass/Assets.xcassets/AppIcon.appiconset/Icon-1024.png" width="128" height="128" alt="MusicGlass Icon" style="border-radius: 24px;">
+</p>
 
-MusicGlass is a native SwiftUI iOS MVP for a premium music player UI backed by YouTube Music discovery and stream metadata through a contained InnerTube client.
+<h1 align="center">MusicGlass</h1>
 
-It is a third-party prototype and is not affiliated with, endorsed by, sponsored by, or associated with YouTube, Google, Apple, or their affiliates. It does not include DRM circumvention, embedded credentials, or copied Metrolist GPL code.
+<p align="center">
+  <strong>A premium, native iOS music player featuring a stunning "Liquid Glass" interface, powered by YouTube Music discovery.</strong>
+</p>
 
-## Architecture
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#roadmap">Roadmap</a>
+</p>
 
-- `App`: app entry point, dependency container, navigation root, global player sheets.
-- `Core`: domain models, errors, logging, formatting helpers.
-- `Networking`: `URLSession` HTTP client, request primitives, redaction-aware network logger.
-- `YouTubeMusic`: permissive InnerTube client, DTOs, defensive JSON mapper, lyrics service.
-- `Playback`: `AVPlayer`, audio session, queue, Now Playing, Control Center commands, cache cleanup.
-- `Persistence`: SwiftData records and repositories for favorites, history, playlists, cache metadata.
-- `UI`: reusable design system, Liquid Glass fallback materials, artwork/cards/rows/state views.
-- `Features`: Home, Search, Library, Player, Lyrics, Settings screens and view models.
-- `MusicGlassTests`: parser and queue unit tests with local fixtures.
+---
 
-## Run
+## ✨ Overview
 
-1. Open `MusicGlass.xcodeproj` in Xcode 26.4 or newer.
+**MusicGlass** is a modern, high-fidelity iOS music player designed with a meticulously crafted SwiftUI interface. It bridges the gap between premium native aesthetics (inspired by Apple Music's "Liquid Glass" materials) and the vast catalog of YouTube Music via a custom, robust InnerTube client. 
+
+Built entirely in **SwiftUI** and powered by **SwiftData** and **AVPlayer**, MusicGlass provides a seamless, fast, and beautiful listening experience without compromising on performance.
+
+> **Disclaimer:** This is a third-party prototype. It is not affiliated with, endorsed by, or associated with YouTube, Google, Apple, or their affiliates. It does not include DRM circumvention.
+
+## 🚀 Key Features
+
+### 🎨 Stunning "Liquid Glass" UI
+- Custom material rendering that mimics iOS native blurs perfectly.
+- Reactive, smooth micro-animations and transitions.
+- A fully responsive player screen, mini-player, and interactive queue.
+
+### 🎧 Uncompromised Playback
+- **Native `AVPlayer` Engine**: Enjoy high-quality audio streams directly.
+- **System Integration**: Full support for Background Audio, Lock Screen metadata, and Control Center commands.
+- **Smart Queue Management**: Features shuffle, repeat modes, and seamless track transitions.
+
+### 🔍 Discovery & Library (InnerTube)
+- **Home Feed**: Personalized feed leveraging YouTube Music (`FEmusic_home`), blended with local history.
+- **Lightning Fast Search**: 350ms debounced search with grouped results (Songs, Albums, Artists, Playlists, Videos).
+- **Offline First Metadata**: Local persistence of your Favorites and History using **SwiftData**.
+
+### 🎤 Immersive Lyrics
+- Built-in integration with **LRCLib** for real-time plain and synced lyrics lookup.
+
+---
+
+## 🛠️ Technological Advancements
+
+MusicGlass isn't just another music wrapper. It’s built on a modern, robust architecture:
+
+- **SwiftUI 100%**: Completely built using the latest declarative UI paradigms.
+- **SwiftData**: Modern, fast local database for user persistence.
+- **Custom Networking Logger**: Redaction-aware network logger to securely monitor API calls without leaking sensitive tokens.
+- **Defensive JSON Mapping**: Highly permissive InnerTube client to gracefully handle YouTube Music API payload changes.
+- **Decoupled Architecture**: Clean separation between `App`, `Core`, `Networking`, `YouTubeMusic`, `Playback`, `Persistence`, and `UI` layers.
+
+## 📦 Installation & Setup
+
+1. Clone the repository and open `MusicGlass.xcodeproj` in **Xcode 26.4** or newer.
 2. Select the `MusicGlass` scheme.
-3. Run on an iOS 26 simulator/device for native Liquid Glass, or iOS 17/18 for the material fallback.
+3. Build and run on an **iOS 26+** device or simulator for the full Liquid Glass experience. *(iOS 17/18 provides a material fallback)*.
 
-CLI build check:
+### CLI Build Check
 
-```sh
+```bash
 xcodebuild -project MusicGlass.xcodeproj -target MusicGlass -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
 xcodebuild -project MusicGlass.xcodeproj -target MusicGlassTests -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
 ```
 
-The app requires network access to search and resolve playable YouTube Music streams. Background audio is enabled through `UIBackgroundModes = audio`.
+*Note: The app requires network access for discovery and playback. Background audio is enabled via `UIBackgroundModes`.*
 
-## MVP Scope
+## 🛣️ Roadmap
 
-Implemented:
+- [ ] **Authentication**: Secure YouTube Music login via Keychain.
+- [ ] **Library Sync**: Remote synchronization for songs, albums, artists, and playlists.
+- [ ] **Advanced Lyrics**: Karaoke-style synced lyrics highlighting.
+- [ ] **Intelligent Offline Mode**: Caching for offline playback.
+- [ ] **Ecosystem**: Widgets, Live Activities, and potential CarPlay/ShazamKit integration.
+- [ ] **Social**: Last.fm scrobbling and listen-together sessions.
 
-- Onboarding disclaimer.
-- Home feed from YouTube Music `FEmusic_home`, with local recent history inserted.
-- Search with 350 ms debounce, suggestions, grouped songs/albums/artists/playlists/videos.
-- Native AVPlayer playback from compatible InnerTube audio URLs.
-- Mini-player, full-player, queue, shuffle, repeat, seek.
-- Background audio, lock screen metadata, Control Center commands.
-- Local favorites and history through SwiftData.
-- LRCLib plain/synced lyrics lookup architecture.
-- Settings for cache, theme placeholder, audio quality placeholder, debug toggle placeholder.
-- Defensive parser tests and queue tests.
+## 🤝 Contributing
 
-## Limits
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/jeremy99981/MusicGlass/issues).
 
-- No YouTube Music login yet.
-- No remote library sync.
-- No offline audio download in this MVP; metadata/artwork cache cleanup only.
-- No JS signature deciphering or DRM circumvention.
-- YouTube Music response shapes may change; parsers are intentionally permissive and isolated.
-- Album/artist/playlist detail parsing is basic and depends on exposed InnerTube renderers.
-- Audio quality picker is a UI placeholder until format selection policy is expanded.
+---
 
-## Roadmap
-
-- Secure YouTube Music login through an isolated auth service and Keychain storage.
-- Account library sync for songs, albums, artists, and playlists.
-- Remote playlist management and playlist import.
-- More robust album/artist/playlist parsers with JSON fixtures.
-- Synced lyrics highlighting in the player.
-- Legal/terms-aware intelligent offline mode.
-- Last.fm scrobbling.
-- AirPlay refinements.
-- CarPlay exploration if legally and technically appropriate.
-- Widgets and optional Live Activity.
-- ShazamKit recognition.
-- Listen together / shared queue experiments.
+<p align="center">
+  <i>Crafted with ❤️ for music lovers and Swift developers.</i>
+</p>

@@ -118,6 +118,14 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
     }
 
     func next() {
+        if let currentTrack,
+           let explicitNext = queue.upcomingTracks.first(where: { !$0.musicGlassIsSameQueueItem(as: currentTrack) }) {
+            queue.setCurrent(explicitNext)
+            persistQueue()
+            loadAndPlay(explicitNext)
+            return
+        }
+
         guard let track = queue.nextTrack() else {
             pause()
             return
@@ -169,6 +177,21 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
 
     func moveQueueItems(from offsets: IndexSet, to destination: Int) {
         queue.move(from: offsets, to: destination)
+        persistQueue()
+    }
+
+    func removeUpcomingQueueItems(at offsets: IndexSet) {
+        let startIndex = upcomingQueueStartIndex
+        let mappedOffsets = IndexSet(offsets.map { $0 + startIndex })
+        queue.remove(at: mappedOffsets)
+        persistQueue()
+    }
+
+    func moveUpcomingQueueItems(from offsets: IndexSet, to destination: Int) {
+        let startIndex = upcomingQueueStartIndex
+        let mappedOffsets = IndexSet(offsets.map { $0 + startIndex })
+        let mappedDestination = destination + startIndex
+        queue.move(from: mappedOffsets, to: mappedDestination)
         persistQueue()
     }
 
@@ -577,6 +600,12 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
         nowPlayingManager.update(track: currentTrack, state: state, elapsed: progress, duration: duration)
     }
 
+    private var upcomingQueueStartIndex: Int {
+        let currentIndex = queue.currentIndex ?? -1
+        let start = currentIndex + 1
+        return min(max(start, 0), queue.tracks.count)
+    }
+
     private func logPlaybackProgressIfNeeded(_ seconds: TimeInterval) {
         let wholeSeconds = Int(seconds.rounded(.down))
         guard wholeSeconds >= 0,
@@ -661,6 +690,17 @@ private extension String {
 }
 
 private extension Track {
+    func musicGlassIsSameQueueItem(as other: Track) -> Bool {
+        if videoId == other.videoId || id == other.id {
+            return true
+        }
+        let lhsTitle = title.musicGlassQueueNormalized
+        let rhsTitle = other.title.musicGlassQueueNormalized
+        let lhsArtist = artistLine.musicGlassQueueNormalized
+        let rhsArtist = other.artistLine.musicGlassQueueNormalized
+        return !lhsTitle.isEmpty && !lhsArtist.isEmpty && lhsTitle == rhsTitle && lhsArtist == rhsArtist
+    }
+
     func musicGlassIsQueueRecommendation(seed: Track) -> Bool {
         guard id != seed.id, videoId != seed.videoId else { return false }
         let folded = ([title, artistLine, album?.title ?? ""]).joined(separator: " ").musicGlassQueueNormalized

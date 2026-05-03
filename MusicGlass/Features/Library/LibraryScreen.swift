@@ -3,8 +3,10 @@ import SwiftUI
 struct LibraryScreen: View {
     @EnvironmentObject private var container: AppContainer
     @EnvironmentObject private var player: AVPlayerEngine
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject var viewModel: LibraryViewModel
     @State private var showSettings = false
+    @AppStorage("musicglass.loginFlowInProgress") private var loginFlowInProgress = false
 
     var body: some View {
         NavigationStack {
@@ -33,6 +35,12 @@ struct LibraryScreen: View {
             }
             .onReceive(container.authService.$dataSyncId) { _ in
                 viewModel.load()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                if loginFlowInProgress, !container.authService.isAuthenticated {
+                    showSettings = true
+                }
             }
             .sheet(isPresented: $showSettings) {
                 SettingsScreen(viewModel: SettingsViewModel(cacheManager: container.playbackCacheManager, authService: container.authService))

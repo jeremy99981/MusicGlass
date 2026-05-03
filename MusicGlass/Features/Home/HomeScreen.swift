@@ -130,7 +130,7 @@ private struct HomeSectionView: View {
                 .padding(.horizontal, AppSpacing.medium)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: AppSpacing.medium) {
-                    ForEach(section.items) { item in
+                    ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
                         homeCard(for: item)
                     }
                 }
@@ -143,25 +143,23 @@ private struct HomeSectionView: View {
     @ViewBuilder
     private func homeCard(for item: HomeItem) -> some View {
         switch item {
-        case .track:
+        case .track(let track):
             Button {
-                action(item)
+                action(.track(track))
             } label: {
-                HomeItemCard(item: item)
+                HomeItemCard(item: .track(track))
             }
             .buttonStyle(.plain)
             .contextMenu {
-                if case .track(let track) = item {
-                    Button {
-                        action(item)
-                    } label: {
-                        Label("Lecture", systemImage: AppIcons.play)
-                    }
-                    Button {
-                        radioAction(track)
-                    } label: {
-                        Label("Lancer la radio", systemImage: "dot.radiowaves.left.and.right")
-                    }
+                Button {
+                    action(.track(track))
+                } label: {
+                    Label("Lecture", systemImage: AppIcons.play)
+                }
+                Button {
+                    radioAction(track)
+                } label: {
+                    Label("Lancer la radio", systemImage: "dot.radiowaves.left.and.right")
                 }
             }
         case .album(let album):
