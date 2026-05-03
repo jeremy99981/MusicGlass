@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jeremy99981/MusicGlass/main/MusicGlass/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png" width="128" height="128" alt="MusicGlass Icon" style="border-radius: 24px;">
+  <img src="MusicGlass/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png" width="128" height="128" alt="MusicGlass Icon" style="border-radius: 24px;">
 </p>
 
 <h1 align="center">MusicGlass</h1>
