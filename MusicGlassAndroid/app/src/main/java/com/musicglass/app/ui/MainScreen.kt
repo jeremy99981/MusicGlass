@@ -24,12 +24,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
+import com.musicglass.app.BuildConfig
+import com.musicglass.app.core.update.ChangelogDialog
+import com.musicglass.app.core.update.UpdateAvailableDialog
+import com.musicglass.app.core.update.UpdateCheckState
+import com.musicglass.app.core.update.UpdateViewModel
 import com.musicglass.app.ui.features.AlbumScreen
 import com.musicglass.app.ui.features.ArtistScreen
 import com.musicglass.app.ui.features.HomeScreen
@@ -62,7 +68,8 @@ val bottomNavItems = listOf(
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
-    val playerViewModel: com.musicglass.app.playback.PlayerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val playerViewModel: com.musicglass.app.playback.PlayerViewModel = viewModel()
+    val updateViewModel: UpdateViewModel = viewModel()
     val currentTrack by playerViewModel.currentTrack.collectAsState()
     val currentSongInfo by playerViewModel.currentSongInfo.collectAsState()
     val isLoading by playerViewModel.isLoading.collectAsState()
@@ -73,6 +80,18 @@ fun MainScreen() {
     val scope = rememberCoroutineScope()
     val innerTubeClient = remember { InnerTubeClient() }
     val mapper = remember { InnerTubeJSONMapper() }
+
+    // Update system state
+    val updateState by updateViewModel.updateState.collectAsState()
+    val showUpdateDialog by updateViewModel.showUpdateDialog.collectAsState()
+    val showChangelogDialog by updateViewModel.showChangelogDialog.collectAsState()
+    val downloadProgress by updateViewModel.downloadProgress.collectAsState()
+    val changelogNotes by updateViewModel.changelogNotes.collectAsState()
+
+    // Check for updates on app startup (only once)
+    LaunchedEffect(Unit) {
+        updateViewModel.onAppStart()
+    }
 
     fun navigateToMedia(item: com.musicglass.app.youtubemusic.SongItem) {
         val targetId = item.browseId ?: item.id
@@ -210,7 +229,10 @@ fun MainScreen() {
                     )
                 }
                 composable(Screen.Settings.route) {
-                    SettingsScreen(onLogin = { navController.navigate("login") })
+                    SettingsScreen(
+                        onLogin = { navController.navigate("login") },
+                        updateViewModel = updateViewModel
+                    )
                 }
                 composable("login") {
                     LoginWebViewScreen(
@@ -263,6 +285,41 @@ fun MainScreen() {
                 }
             )
         }
+
+        // Update available dialog
+        if (showUpdateDialog && updateState is UpdateCheckState.UpdateAvailable) {
+            val info = (updateState as UpdateCheckState.UpdateAvailable).info
+            UpdateAvailableDialog(
+                updateInfo = info,
+                downloadState = updateState,
+                downloadProgress = downloadProgress,
+                onDownload = { updateViewModel.downloadUpdate(info) },
+                onDismiss = { updateViewModel.dismissUpdateDialog() }
+            )
+        }
+
+        // Also show dialog during download (state transitions away from UpdateAvailable)
+        if (showUpdateDialog && (updateState is UpdateCheckState.Downloading || updateState is UpdateCheckState.Error)) {
+            val cachedInfo = com.musicglass.app.core.update.UpdateRepository.getCachedUpdateInfo()
+            if (cachedInfo != null) {
+                UpdateAvailableDialog(
+                    updateInfo = cachedInfo,
+                    downloadState = updateState,
+                    downloadProgress = downloadProgress,
+                    onDownload = { updateViewModel.downloadUpdate(cachedInfo) },
+                    onDismiss = { updateViewModel.dismissUpdateDialog() }
+                )
+            }
+        }
+
+        // Changelog dialog (shown once after update)
+        if (showChangelogDialog) {
+            ChangelogDialog(
+                versionName = BuildConfig.VERSION_NAME,
+                releaseNotes = changelogNotes,
+                onDismiss = { updateViewModel.dismissChangelogDialog() }
+            )
+        }
     }
 }
 
@@ -276,6 +333,7 @@ fun MiniPlayer(
     val isPlaying by viewModel.isPlaying.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val recoveryStatus by viewModel.recoveryStatus.collectAsState()
 
     // If we have neither track nor fallback info, don't show the player
     if (currentTrack == null && currentSongInfo == null && !isLoading) return
@@ -292,6 +350,7 @@ fun MiniPlayer(
     }
 
     fun resolvedSubtitle(): String {
+        if (recoveryStatus != null) return recoveryStatus!!
         if (error != null) return error!!
 
         val fallbackArtist = currentSongInfo?.artists
@@ -358,7 +417,11 @@ fun MiniPlayer(
                 Text(
                     text = resolvedSubtitle(),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (error != null && recoveryStatus == null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

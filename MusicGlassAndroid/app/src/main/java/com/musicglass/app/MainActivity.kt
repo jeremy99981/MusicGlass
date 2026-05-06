@@ -11,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import com.musicglass.app.core.update.UpdateRepository
 import com.musicglass.app.persistence.AppSettingsRepository
 import com.musicglass.app.persistence.AppThemeMode
 import com.musicglass.app.persistence.PlaybackHistoryRepository
@@ -24,6 +25,7 @@ class MainActivity : ComponentActivity() {
         AuthService.init(applicationContext)
         AppSettingsRepository.init(applicationContext)
         PlaybackHistoryRepository.init(applicationContext)
+        UpdateRepository.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             val settings by AppSettingsRepository.state.collectAsState()

@@ -29,7 +29,14 @@ struct FullPlayerScreen: View {
                 VStack(spacing: 0) {
                     closeHandle(safeTop: safeTop)
 
-                    PlayerArtworkView(url: player.currentTrack?.bestThumbnailURL, size: artworkSize)
+                    SwipeablePlayerArtworkView(
+                        url: player.currentTrack?.bestThumbnailURL,
+                        size: artworkSize,
+                        identity: player.currentTrack?.id,
+                        previousRestartsCurrentTrack: player.progress > 5,
+                        onPrevious: { player.previous() },
+                        onNext: { player.next() }
+                    )
                         .padding(.top, isCompact ? 6 : 12)
 
                     VStack(alignment: .leading, spacing: isCompact ? 14 : 18) {
@@ -558,6 +565,163 @@ private extension View {
     }
 }
 
+
+private struct SwipeablePlayerArtworkView: View {
+    var url: URL?
+    var size: CGFloat
+    var identity: String?
+    var previousRestartsCurrentTrack: Bool
+    var onPrevious: () -> Void
+    var onNext: () -> Void
+
+    @State private var axisLock: ArtworkSwipeAxis?
+    @State private var offsetX: CGFloat = 0
+    @State private var visualOpacity: CGFloat = 1
+    @State private var visualScale: CGFloat = 1
+    @State private var isCommitting = false
+    @State private var commitDirection: CGFloat = 0
+
+    private var artworkIdentity: String {
+        identity ?? url?.absoluteString ?? "empty-artwork"
+    }
+
+    var body: some View {
+        PlayerArtworkView(url: url, size: size)
+            .id(artworkIdentity)
+            .offset(x: offsetX)
+            .scaleEffect(visualScale)
+            .opacity(visualOpacity)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .simultaneousGesture(swipeGesture)
+            .onChange(of: artworkIdentity) { _, _ in
+                guard isCommitting else { return }
+                animateIncomingArtwork()
+            }
+            .accessibilityAction(named: "Titre precedent") {
+                onPrevious()
+            }
+            .accessibilityAction(named: "Titre suivant") {
+                onNext()
+            }
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .onChanged { value in
+                guard !isCommitting else { return }
+                updateDragLock(for: value.translation)
+
+                guard axisLock == .horizontal else { return }
+                let resistance: CGFloat = value.translation.width > 0 && previousRestartsCurrentTrack ? 0.42 : 1
+                let rawOffset = value.translation.width * resistance
+                offsetX = min(max(rawOffset, -(size * 0.95)), size * 0.95)
+                let progress = min(abs(offsetX) / max(size, 1), 1)
+                visualOpacity = 1 - (progress * 0.18)
+                visualScale = 1 - (progress * 0.035)
+            }
+            .onEnded { value in
+                guard !isCommitting else { return }
+                defer { axisLock = nil }
+                guard axisLock == .horizontal else {
+                    resetArtwork()
+                    return
+                }
+
+                let widthThreshold = size * 0.22
+                let predictedThreshold = size * 0.32
+                let translation = value.translation.width
+                let predicted = value.predictedEndTranslation.width
+
+                if translation > widthThreshold || predicted > predictedThreshold {
+                    if previousRestartsCurrentTrack {
+                        onPrevious()
+                        resetArtwork()
+                    } else {
+                        commitSwipe(direction: 1, action: onPrevious)
+                    }
+                } else if translation < -widthThreshold || predicted < -predictedThreshold {
+                    commitSwipe(direction: -1, action: onNext)
+                } else {
+                    resetArtwork()
+                }
+            }
+    }
+
+    private func updateDragLock(for translation: CGSize) {
+        guard axisLock == nil else { return }
+        let absX = abs(translation.width)
+        let absY = abs(translation.height)
+        guard absX > 8 || absY > 8 else { return }
+
+        if absX > absY * 1.25 {
+            axisLock = .horizontal
+        } else if absY > absX * 1.1 {
+            axisLock = .vertical
+        }
+    }
+
+    private func commitSwipe(direction: CGFloat, action: @escaping () -> Void) {
+        isCommitting = true
+        commitDirection = direction
+
+        withAnimation(.easeOut(duration: 0.14)) {
+            offsetX = direction * size * 1.05
+            visualOpacity = 0.36
+            visualScale = 0.94
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+            action()
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.58) {
+            guard isCommitting else { return }
+            resetArtwork()
+            isCommitting = false
+        }
+    }
+
+    private func animateIncomingArtwork() {
+        let incomingOffset = -commitDirection * size * 0.72
+        withoutAnimation {
+            offsetX = incomingOffset
+            visualOpacity = 0.52
+            visualScale = 0.96
+        }
+
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+            offsetX = 0
+            visualOpacity = 1
+            visualScale = 1
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+            isCommitting = false
+            commitDirection = 0
+        }
+    }
+
+    private func resetArtwork() {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+            offsetX = 0
+            visualOpacity = 1
+            visualScale = 1
+        }
+    }
+
+    private func withoutAnimation(_ updates: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            updates()
+        }
+    }
+}
+
+private enum ArtworkSwipeAxis {
+    case horizontal
+    case vertical
+}
 
 private struct PlayerArtworkView: View {
     var url: URL?

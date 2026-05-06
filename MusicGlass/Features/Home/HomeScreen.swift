@@ -6,23 +6,35 @@ struct HomeScreen: View {
     @StateObject var viewModel: HomeViewModel
     var playerDestination: Binding<MusicDestination?> = .constant(nil)
     @State private var navigationPath: [MusicDestination] = []
+    @State private var showsNavigationChrome = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            ZStack {
-                background
-                ScrollView {
-                    VStack(alignment: .leading, spacing: AppSpacing.xLarge) {
-                        header
-                        content
+            GeometryReader { proxy in
+                let topPadding = max(proxy.safeAreaInsets.top + 6, 56)
+
+                ZStack {
+                    background
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppSpacing.xLarge) {
+                            header
+                            content
+                        }
+                        .padding(.top, topPadding)
+                        .padding(.bottom, 140)
                     }
-                    .padding(.top, AppSpacing.medium)
-                    .padding(.bottom, 140)
+                    .ignoresSafeArea(edges: .top)
+                    .scrollIndicators(.hidden)
+                    .homeScrollChromeTracking(isVisible: $showsNavigationChrome)
                 }
-                .scrollIndicators(.hidden)
+                .ignoresSafeArea(edges: .top)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .ignoresSafeArea(edges: .top)
+            .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .top) {
+                HomeScrollChrome(title: greeting, isVisible: showsNavigationChrome)
+                    .allowsHitTesting(false)
+            }
             .task { viewModel.loadIfNeeded() }
             .onAppear { viewModel.refreshRecentlyPlayedSection() }
             .refreshable { viewModel.load() }
@@ -54,13 +66,14 @@ struct HomeScreen: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.small) {
+        HStack(alignment: .center, spacing: AppSpacing.medium) {
             Text(greeting)
                 .font(AppTypography.largeTitle)
                 .foregroundStyle(.primary)
-            Text("Recommandations, playlists du moment et découvertes pour vous")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            Spacer(minLength: AppSpacing.medium)
+            FixedAccountAvatar()
         }
         .padding(.horizontal, AppSpacing.medium)
     }
@@ -122,6 +135,78 @@ struct HomeScreen: View {
         case .playlist(let browseId):
             PlaylistDetailScreen(viewModel: PlaylistDetailViewModel(client: container.youTubeMusicClient, browseId: browseId))
         }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func homeScrollChromeTracking(isVisible: Binding<Bool>) -> some View {
+        if #available(iOS 18.0, *) {
+            onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y > 72
+            } action: { _, shouldShowChrome in
+                guard shouldShowChrome != isVisible.wrappedValue else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isVisible.wrappedValue = shouldShowChrome
+                }
+            }
+        } else {
+            self
+        }
+    }
+}
+
+private struct HomeScrollChrome: View {
+    var title: String
+    var isVisible: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            let safeTop = max(proxy.safeAreaInsets.top, 54)
+            let height = safeTop + 48
+
+            VStack(spacing: 0) {
+                Color.black
+                    .overlay(.ultraThinMaterial.opacity(0.18))
+                    .overlay(alignment: .bottom) {
+                        Text(title)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.bottom, 10)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .ignoresSafeArea(edges: .top)
+                    .opacity(isVisible ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.18), value: isVisible)
+                Spacer(minLength: 0)
+            }
+        }
+        .zIndex(20)
+    }
+}
+
+private struct FixedAccountAvatar: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppColors.accent.opacity(0.95),
+                            AppColors.secondaryAccent.opacity(0.9)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Text("MG")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 38, height: 38)
+        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+        .accessibilityLabel("Compte")
     }
 }
 

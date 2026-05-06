@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Un lecteur de musique iOS natif haut de gamme, doté d'une superbe interface "Liquid Glass" et propulsé par la découverte de YouTube Music.</strong>
+  <strong>Un lecteur de musique iOS et Android natif haut de gamme, doté d'une superbe interface et propulsé par la découverte de YouTube Music.</strong>
 </p>
 
 <p align="center">
@@ -24,9 +24,9 @@
 
 ## ✨ Aperçu
 
-**MusicGlass** est un lecteur de musique iOS moderne et haute-fidélité, conçu avec une interface SwiftUI méticuleusement soignée. Il fait le pont entre une esthétique native premium (inspirée des matériaux "Liquid Glass" d'Apple Music) et le vaste catalogue de YouTube Music via un client InnerTube personnalisé et robuste.
+**MusicGlass** est un lecteur de musique moderne et haute-fidélité disponible sur **iOS** et **Android**, conçu avec une interface méticuleusement soignée. Il fait le pont entre une esthétique native premium (inspirée des matériaux "Liquid Glass" d'Apple Music et du Material Design 3) et le vaste catalogue de YouTube Music via un client InnerTube personnalisé et robuste.
 
-Entièrement développé en **SwiftUI** et propulsé par **SwiftData** et **AVPlayer**, MusicGlass offre une expérience d'écoute fluide, rapide et magnifique sans faire de compromis sur les performances.
+Entièrement développé en **SwiftUI** pour iOS et en **Jetpack Compose** pour Android, MusicGlass offre une expérience d'écoute multiplateforme fluide, rapide et magnifique sans faire de compromis sur les performances.
 
 > **Avertissement :** Ceci est un prototype tiers. Il n'est ni affilié, ni approuvé, ni associé à YouTube, Google, Apple ou leurs affiliés. Il n'inclut aucun contournement de DRM.
 
@@ -91,9 +91,15 @@ Entièrement propulsée par **SwiftData**.
 
 ## 📦 Installation & Configuration
 
+### 🍎 iOS
 1. Clonez le dépôt et ouvrez `MusicGlass.xcodeproj` dans **Xcode 26.4** ou plus récent.
 2. Sélectionnez le schéma `MusicGlass`.
 3. Compilez et lancez sur un appareil ou simulateur sous **iOS 26+** pour l'expérience Liquid Glass complète. *(iOS 17/18 propose une alternative matérielle)*.
+
+### 🤖 Android
+1. Ouvrez le dossier `MusicGlassAndroid` dans **Android Studio**.
+2. Laissez Gradle synchroniser les dépendances du projet.
+3. Compilez et lancez la configuration `app` sur un émulateur ou un appareil physique sous Android 8.0 (API 26) ou supérieur.
 
 ### Vérification de build en CLI
 

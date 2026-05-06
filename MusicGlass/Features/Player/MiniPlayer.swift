@@ -50,6 +50,8 @@ private struct MiniPlayerBody: View {
                             .foregroundStyle(player.errorMessage == nil ? Color.secondary : Color.red)
                             .lineLimit(1)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(nil, value: layout)
 
                     Spacer(minLength: AppSpacing.small)
                 }
@@ -82,7 +84,6 @@ private struct MiniPlayerBody: View {
                     }
                 }
         )
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: layout)
     }
 
     private var subtitle: String {

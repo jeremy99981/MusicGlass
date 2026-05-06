@@ -13,8 +13,10 @@ android {
         applicationId = "com.musicglass.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "0.0.2"
+
+        buildConfigField("String", "GITHUB_REPO", "\"jeremy99981/MusicGlass\"")
     }
 
     buildTypes {
@@ -32,6 +34,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>A premium, native iOS music player featuring a stunning "Liquid Glass" interface, powered by YouTube Music discovery.</strong>
+  <strong>A premium, native iOS and Android music player featuring a stunning "Liquid Glass" interface, powered by YouTube Music discovery.</strong>
 </p>
 
 <p align="center">
@@ -24,9 +24,9 @@
 
 ## ✨ Overview
 
-**MusicGlass** is a modern, high-fidelity iOS music player designed with a meticulously crafted SwiftUI interface. It bridges the gap between premium native aesthetics (inspired by Apple Music's "Liquid Glass" materials) and the vast catalog of YouTube Music via a custom, robust InnerTube client. 
+**MusicGlass** is a modern, high-fidelity music player available on both **iOS** and **Android**, designed with a meticulously crafted interface. It bridges the gap between premium native aesthetics (inspired by Apple Music's "Liquid Glass" materials and Material Design 3) and the vast catalog of YouTube Music via a custom, robust InnerTube client. 
 
-Built entirely in **SwiftUI** and powered by **SwiftData** and **AVPlayer**, MusicGlass provides a seamless, fast, and beautiful listening experience without compromising on performance.
+Built entirely in **SwiftUI** for iOS and **Jetpack Compose** for Android, MusicGlass provides a seamless, fast, and beautiful cross-platform listening experience without compromising on performance.
 
 > **Disclaimer:** This is a third-party prototype. It is not affiliated with, endorsed by, or associated with YouTube, Google, Apple, or their affiliates. It does not include DRM circumvention.
 
@@ -91,9 +91,15 @@ Powered entirely by **SwiftData**.
 
 ## 📦 Installation & Setup
 
+### 🍎 iOS
 1. Clone the repository and open `MusicGlass.xcodeproj` in **Xcode 26.4** or newer.
 2. Select the `MusicGlass` scheme.
 3. Build and run on an **iOS 26+** device or simulator for the full Liquid Glass experience. *(iOS 17/18 provides a material fallback)*.
+
+### 🤖 Android
+1. Open the `MusicGlassAndroid` directory in **Android Studio**.
+2. Let Gradle sync the project dependencies.
+3. Build and run the `app` configuration on an emulator or physical device running Android 8.0 (API 26) or higher.
 
 ### CLI Build Check
 

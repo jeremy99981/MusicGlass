@@ -1,8 +1,14 @@
 package com.musicglass.app.ui.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -53,12 +59,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,12 +77,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.musicglass.app.playback.PlayerViewModel
 import com.musicglass.app.playback.RepeatMode
 import com.musicglass.app.youtubemusic.bestThumbnailUrl
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.max
 
 @Composable
@@ -109,6 +122,7 @@ private fun FullPlayerScreen(
     val isPlaying by viewModel.isPlaying.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val recoveryStatus by viewModel.recoveryStatus.collectAsState()
     val positionMs by viewModel.positionMs.collectAsState()
     val durationMs by viewModel.durationMs.collectAsState()
     val volume by viewModel.volume.collectAsState()
@@ -136,6 +150,7 @@ private fun FullPlayerScreen(
         ?: subtitle.takeIf { it.isNotBlank() && it != "MusicGlass" }
     val primaryArtistBrowseId = primaryArtist?.browseId?.takeIf { it.isNotBlank() }
     val statusMessage = when {
+        !recoveryStatus.isNullOrBlank() -> recoveryStatus
         !error.isNullOrBlank() -> error
         isLoading && isPlaying -> "Mise en mémoire"
         isLoading -> "Préparation du flux"
@@ -182,12 +197,29 @@ private fun FullPlayerScreen(
                 )
             }
     ) {
+        val isVeryCompact = maxHeight < 700.dp
         val isCompact = maxHeight < 820.dp
+        val horizontalPadding = if (isVeryCompact) 22.dp else if (isCompact) 26.dp else 30.dp
+        val topContentPadding = if (isVeryCompact) 6.dp else 10.dp
+        val bottomContentPadding = if (isVeryCompact) 10.dp else 18.dp
+        val handleSpacer = if (isVeryCompact) 2.dp else 8.dp
+        val artworkSpacer = if (isVeryCompact) 10.dp else if (isCompact) 14.dp else 22.dp
+        val sliderSpacer = if (isVeryCompact) 6.dp else 12.dp
+        val controlsTopSpacer = if (isVeryCompact) 8.dp else if (isCompact) 14.dp else 0.dp
+        val controlsBottomSpacer = if (isVeryCompact) 10.dp else if (isCompact) 16.dp else 28.dp
+        val bottomActionsSpacer = if (isVeryCompact) 8.dp else 18.dp
+        val playButtonSize = if (isVeryCompact) 72.dp else if (isCompact) 84.dp else 96.dp
+        val playIconSize = if (isVeryCompact) 42.dp else if (isCompact) 48.dp else 52.dp
+        val transportButtonSize = if (isVeryCompact) 56.dp else if (isCompact) 64.dp else 72.dp
+        val transportIconSize = if (isVeryCompact) 30.dp else 36.dp
+        val utilityButtonSize = if (isVeryCompact) 40.dp else 48.dp
+        val circleButtonSize = if (isVeryCompact) 40.dp else 44.dp
+        val showVolumeControls = !isVeryCompact
         val artworkSize = minOf(
-            maxWidth - 70.dp,
-            maxHeight * if (isCompact) 0.36f else 0.40f,
-            360.dp
-        ).coerceAtLeast(260.dp)
+            maxWidth - (horizontalPadding * 2f),
+            maxHeight * if (isVeryCompact) 0.29f else if (isCompact) 0.34f else 0.40f,
+            if (isVeryCompact) 230.dp else if (isCompact) 300.dp else 360.dp
+        ).coerceAtLeast(if (isVeryCompact) 170.dp else 230.dp)
 
         if (artworkUrl != null) {
             AsyncImage(
@@ -226,7 +258,12 @@ private fun FullPlayerScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(start = 30.dp, end = 30.dp, top = 10.dp, bottom = 18.dp),
+                .padding(
+                    start = horizontalPadding,
+                    end = horizontalPadding,
+                    top = topContentPadding,
+                    bottom = bottomContentPadding
+                ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             IconButton(onClick = onDismiss) {
@@ -239,34 +276,19 @@ private fun FullPlayerScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(handleSpacer))
 
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White.copy(alpha = 0.08f),
-                tonalElevation = 0.dp,
-                shadowElevation = 16.dp
-            ) {
-                if (artworkUrl != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(artworkUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(artworkSize)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(artworkSize)
-                            .background(Color.White.copy(alpha = 0.10f))
-                    )
-                }
-            }
+            SwipeableArtworkSurface(
+                artworkUrl = artworkUrl,
+                artworkSize = artworkSize,
+                canSkipNext = canSkipNext,
+                canSkipPrevious = canSkipPrevious,
+                previousRestartsCurrentTrack = positionMs > 5_000L,
+                onPrevious = viewModel::previous,
+                onNext = { viewModel.next() }
+            )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(artworkSpacer))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -297,7 +319,7 @@ private fun FullPlayerScreen(
                     Text(
                         text = statusMessage ?: " ",
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (error != null) MaterialTheme.colorScheme.error else Color.White.copy(alpha = 0.62f),
+                        color = if (error != null && recoveryStatus == null) MaterialTheme.colorScheme.error else Color.White.copy(alpha = 0.62f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -306,16 +328,16 @@ private fun FullPlayerScreen(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FrostedCircleButton(onClick = {}) {
+                    FrostedCircleButton(onClick = {}, size = circleButtonSize) {
                         Icon(Icons.Filled.FavoriteBorder, contentDescription = "Favori", tint = Color.White)
                     }
-                    FrostedCircleButton(onClick = {}) {
+                    FrostedCircleButton(onClick = {}, size = circleButtonSize) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "Plus", tint = Color.White)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(sliderSpacer))
 
             Slider(
                 value = sliderPosition.coerceIn(0f, durationMs.toFloat().coerceAtLeast(0f)),
@@ -353,7 +375,11 @@ private fun FullPlayerScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            if (isCompact) {
+                Spacer(modifier = Modifier.height(controlsTopSpacer))
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -362,13 +388,14 @@ private fun FullPlayerScreen(
             ) {
                 PlayerTransportButton(
                     enabled = canSkipPrevious,
-                    onClick = viewModel::previous
+                    onClick = viewModel::previous,
+                    size = transportButtonSize
                 ) {
                     Icon(
                         Icons.Filled.SkipPrevious,
                         contentDescription = "Précédent",
                         tint = Color.White,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(transportIconSize)
                     )
                 }
 
@@ -378,74 +405,77 @@ private fun FullPlayerScreen(
                         containerColor = Color.White.copy(alpha = 0.16f),
                         contentColor = Color.White
                     ),
-                    modifier = Modifier.size(96.dp)
+                    modifier = Modifier.size(playButtonSize)
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
                             color = Color.White,
                             strokeWidth = 3.dp,
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier.size(if (isVeryCompact) 30.dp else 34.dp)
                         )
                     } else {
                         Icon(
                             imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Lecture",
-                            modifier = Modifier.size(52.dp)
+                            modifier = Modifier.size(playIconSize)
                         )
                     }
                 }
 
                 PlayerTransportButton(
                     enabled = canSkipNext,
-                    onClick = { viewModel.next() }
+                    onClick = { viewModel.next() },
+                    size = transportButtonSize
                 ) {
                     Icon(
                         Icons.Filled.SkipNext,
                         contentDescription = "Suivant",
                         tint = Color.White,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(transportIconSize)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(controlsBottomSpacer))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Filled.VolumeDown,
-                    contentDescription = "Volume bas",
-                    tint = Color.White.copy(alpha = 0.62f)
-                )
-                Slider(
-                    value = volume,
-                    onValueChange = { viewModel.setVolume(it) },
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color.White.copy(alpha = 0.92f),
-                        inactiveTrackColor = Color.White.copy(alpha = 0.24f)
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 12.dp)
-                )
-                Icon(
-                    Icons.Filled.VolumeUp,
-                    contentDescription = "Volume haut",
-                    tint = Color.White.copy(alpha = 0.62f)
-                )
+            if (showVolumeControls) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.VolumeDown,
+                        contentDescription = "Volume bas",
+                        tint = Color.White.copy(alpha = 0.62f)
+                    )
+                    Slider(
+                        value = volume,
+                        onValueChange = { viewModel.setVolume(it) },
+                        valueRange = 0f..1f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color.White.copy(alpha = 0.92f),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.24f)
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp)
+                    )
+                    Icon(
+                        Icons.Filled.VolumeUp,
+                        contentDescription = "Volume haut",
+                        tint = Color.White.copy(alpha = 0.62f)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(bottomActionsSpacer))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                FrostedCircleButton(onClick = { showLyrics = true }) {
+                FrostedCircleButton(onClick = { showLyrics = true }, size = circleButtonSize) {
                     Icon(Icons.Filled.FormatQuote, contentDescription = "Paroles", tint = Color.White)
                 }
 
@@ -460,7 +490,8 @@ private fun FullPlayerScreen(
                     ) {
                         UtilityToggleButton(
                             active = repeatMode != RepeatMode.OFF,
-                            onClick = viewModel::cycleRepeatMode
+                            onClick = viewModel::cycleRepeatMode,
+                            size = utilityButtonSize
                         ) {
                             Icon(
                                 imageVector = if (repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
@@ -473,7 +504,8 @@ private fun FullPlayerScreen(
 
                         UtilityToggleButton(
                             active = shuffleEnabled,
-                            onClick = viewModel::toggleShuffle
+                            onClick = viewModel::toggleShuffle,
+                            size = utilityButtonSize
                         ) {
                             Icon(
                                 Icons.Filled.Shuffle,
@@ -486,7 +518,7 @@ private fun FullPlayerScreen(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                FrostedCircleButton(onClick = { showQueue = true }) {
+                FrostedCircleButton(onClick = { showQueue = true }, size = circleButtonSize) {
                     Icon(Icons.Filled.FormatListBulleted, contentDescription = "File d'attente", tint = Color.White)
                 }
             }
@@ -526,8 +558,186 @@ private fun FullPlayerScreen(
 }
 
 @Composable
+private fun SwipeableArtworkSurface(
+    artworkUrl: String?,
+    artworkSize: Dp,
+    canSkipNext: Boolean,
+    canSkipPrevious: Boolean,
+    previousRestartsCurrentTrack: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val animationScope = rememberCoroutineScope()
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var isAnimatingSwipe by remember { mutableStateOf(false) }
+    val widthPx = with(density) { artworkSize.toPx() }
+    val resetSpring = spring<Float>(
+        stiffness = Spring.StiffnessMediumLow,
+        dampingRatio = Spring.DampingRatioNoBouncy
+    )
+    fun animateBackToCenter() {
+        animationScope.launch {
+            isAnimatingSwipe = true
+            animate(
+                initialValue = offsetX,
+                targetValue = 0f,
+                animationSpec = resetSpring
+            ) { value, _ ->
+                offsetX = value
+            }
+            isAnimatingSwipe = false
+        }
+    }
+    fun animateTrackChange(direction: Float, action: () -> Unit) {
+        animationScope.launch {
+            isAnimatingSwipe = true
+            animate(
+                initialValue = offsetX,
+                targetValue = direction * widthPx * 1.05f,
+                animationSpec = tween(durationMillis = 140)
+            ) { value, _ ->
+                offsetX = value
+            }
+            action()
+            offsetX = -direction * widthPx * 0.72f
+            animate(
+                initialValue = offsetX,
+                targetValue = 0f,
+                animationSpec = resetSpring
+            ) { value, _ ->
+                offsetX = value
+            }
+            isAnimatingSwipe = false
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White.copy(alpha = 0.08f),
+        tonalElevation = 0.dp,
+        shadowElevation = 16.dp,
+        modifier = Modifier
+            .graphicsLayer {
+                val progress = (abs(offsetX) / max(widthPx, 1f)).coerceIn(0f, 1f)
+                translationX = offsetX
+                alpha = 1f - (progress * 0.22f)
+                scaleX = 1f - (progress * 0.035f)
+                scaleY = 1f - (progress * 0.035f)
+            }
+            .pointerInput(widthPx, canSkipNext, canSkipPrevious, previousRestartsCurrentTrack) {
+                awaitEachGesture {
+                    if (isAnimatingSwipe) return@awaitEachGesture
+
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val velocityTracker = VelocityTracker()
+                    velocityTracker.addPosition(down.uptimeMillis, down.position)
+
+                    var totalX = 0f
+                    var totalY = 0f
+                    var horizontalLocked = false
+                    var verticalLocked = false
+                    var released = false
+                    val lockSlop = 8.dp.toPx()
+
+                    while (!released) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                        if (change.changedToUpIgnoreConsumed()) {
+                            released = true
+                            continue
+                        }
+
+                        val delta = change.positionChange()
+                        totalX += delta.x
+                        totalY += delta.y
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                        if (!horizontalLocked && !verticalLocked) {
+                            val absX = abs(totalX)
+                            val absY = abs(totalY)
+                            if (absX > lockSlop || absY > lockSlop) {
+                                when {
+                                    absX > absY * 1.25f -> horizontalLocked = true
+                                    absY > absX * 1.1f -> verticalLocked = true
+                                }
+                            }
+                        }
+
+                        if (verticalLocked) {
+                            break
+                        }
+
+                        if (horizontalLocked) {
+                            change.consume()
+                            val hasTarget = if (totalX > 0f) canSkipPrevious else canSkipNext
+                            val resistance = if (!hasTarget || (totalX > 0f && previousRestartsCurrentTrack)) 0.42f else 1f
+                            val targetOffset = (totalX * resistance).coerceIn(-widthPx * 0.95f, widthPx * 0.95f)
+                            offsetX = targetOffset
+                        }
+                    }
+
+                    if (!horizontalLocked || verticalLocked) {
+                        animateBackToCenter()
+                        return@awaitEachGesture
+                    }
+
+                    val velocityX = velocityTracker.calculateVelocity().x
+                    val widthThreshold = widthPx * 0.22f
+                    val velocityThreshold = widthPx * 2.4f
+                    val direction = when {
+                        offsetX > widthThreshold || velocityX > velocityThreshold -> 1f
+                        offsetX < -widthThreshold || velocityX < -velocityThreshold -> -1f
+                        else -> 0f
+                    }
+
+                    when {
+                        direction == 0f -> {
+                            animateBackToCenter()
+                        }
+                        direction > 0f && previousRestartsCurrentTrack -> {
+                            onPrevious()
+                            animateBackToCenter()
+                        }
+                        direction > 0f && canSkipPrevious -> {
+                            animateTrackChange(direction, onPrevious)
+                        }
+                        direction < 0f && canSkipNext -> {
+                            animateTrackChange(direction, onNext)
+                        }
+                        else -> {
+                            animateBackToCenter()
+                        }
+                    }
+                }
+            }
+    ) {
+        if (artworkUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(artworkUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(artworkSize)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(artworkSize)
+                    .background(Color.White.copy(alpha = 0.10f))
+            )
+        }
+    }
+}
+
+@Composable
 private fun FrostedCircleButton(
     onClick: () -> Unit,
+    size: androidx.compose.ui.unit.Dp = 44.dp,
     content: @Composable () -> Unit
 ) {
     IconButton(
@@ -536,7 +746,7 @@ private fun FrostedCircleButton(
             containerColor = Color.White.copy(alpha = 0.12f),
             contentColor = Color.White
         ),
-        modifier = Modifier.size(44.dp)
+        modifier = Modifier.size(size)
     ) {
         content()
     }
@@ -546,6 +756,7 @@ private fun FrostedCircleButton(
 private fun PlayerTransportButton(
     enabled: Boolean,
     onClick: () -> Unit,
+    size: androidx.compose.ui.unit.Dp = 72.dp,
     content: @Composable () -> Unit
 ) {
     IconButton(
@@ -556,7 +767,7 @@ private fun PlayerTransportButton(
             contentColor = Color.White,
             disabledContentColor = Color.White.copy(alpha = 0.32f)
         ),
-        modifier = Modifier.size(72.dp)
+        modifier = Modifier.size(size)
     ) {
         content()
     }
@@ -566,6 +777,7 @@ private fun PlayerTransportButton(
 private fun UtilityToggleButton(
     active: Boolean,
     onClick: () -> Unit,
+    size: androidx.compose.ui.unit.Dp = 48.dp,
     content: @Composable () -> Unit
 ) {
     IconButton(
@@ -574,7 +786,7 @@ private fun UtilityToggleButton(
             containerColor = Color.Transparent,
             contentColor = if (active) Color.White else Color.White.copy(alpha = 0.72f)
         ),
-        modifier = Modifier.size(48.dp)
+        modifier = Modifier.size(size)
     ) {
         content()
     }

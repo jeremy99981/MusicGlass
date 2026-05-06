@@ -1,6 +1,9 @@
 package com.musicglass.app.ui.features
 
 import android.app.Application
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -16,15 +19,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -47,6 +54,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.musicglass.app.BuildConfig
+import com.musicglass.app.core.update.UpdateAvailableDialog
+import com.musicglass.app.core.update.UpdateCheckState
+import com.musicglass.app.core.update.UpdateRepository
+import com.musicglass.app.core.update.UpdateViewModel
 import com.musicglass.app.persistence.AppSettingsRepository
 import com.musicglass.app.persistence.AppThemeMode
 import com.musicglass.app.persistence.AudioQualityMode
@@ -109,11 +121,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel(),
-    onLogin: () -> Unit
+    onLogin: () -> Unit,
+    updateViewModel: UpdateViewModel
 ) {
     val settings by viewModel.settings.collectAsState()
     val auth by viewModel.auth.collectAsState()
     val cacheSizeText by viewModel.cacheSizeText.collectAsState()
+
+    // Update state
+    val updateState by updateViewModel.updateState.collectAsState()
+    val showUpdateDialog by updateViewModel.showUpdateDialog.collectAsState()
+    val downloadProgress by updateViewModel.downloadProgress.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.loadCacheSize()
@@ -209,6 +227,98 @@ fun SettingsScreen(
             }
 
             item {
+                SettingsCard(title = "Mise à jour") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Version actuelle", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                BuildConfig.VERSION_NAME,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        when (updateState) {
+                            is UpdateCheckState.Checking -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Vérification…",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            is UpdateCheckState.NoUpdate -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Filled.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "À jour",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            is UpdateCheckState.UpdateAvailable -> {
+                                Button(onClick = {
+                                    updateViewModel.checkForUpdateFromSettings()
+                                }) {
+                                    Icon(
+                                        Icons.Filled.SystemUpdate,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Mettre à jour")
+                                }
+                            }
+                            else -> {
+                                OutlinedButton(onClick = {
+                                    updateViewModel.checkForUpdateFromSettings()
+                                }) {
+                                    Icon(
+                                        Icons.Filled.SystemUpdate,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Vérifier")
+                                }
+                            }
+                        }
+                    }
+
+                    // Show error message if any
+                    AnimatedVisibility(
+                        visible = updateState is UpdateCheckState.Error,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        if (updateState is UpdateCheckState.Error) {
+                            Text(
+                                text = (updateState as UpdateCheckState.Error).message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
                 SettingsCard(title = "Débogage") {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -234,7 +344,7 @@ fun SettingsScreen(
             item {
                 SettingsCard(title = "À propos") {
                     Text("Version", fontWeight = FontWeight.SemiBold)
-                    Text("1.0 MVP", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(BuildConfig.VERSION_NAME, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "MusicGlass est un prototype de client musical tiers. Il n’est pas affilié à YouTube, Google, Apple ni à leurs filiales. Aucun identifiant ni secret d’API n’est intégré dans l’app.",
@@ -243,6 +353,32 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+    }
+
+    // Update dialog triggered from settings
+    if (showUpdateDialog && updateState is UpdateCheckState.UpdateAvailable) {
+        val info = (updateState as UpdateCheckState.UpdateAvailable).info
+        UpdateAvailableDialog(
+            updateInfo = info,
+            downloadState = updateState,
+            downloadProgress = downloadProgress,
+            onDownload = { updateViewModel.downloadUpdate(info) },
+            onDismiss = { updateViewModel.dismissUpdateDialog() }
+        )
+    }
+
+    // Show dialog during download from settings
+    if (showUpdateDialog && (updateState is UpdateCheckState.Downloading || updateState is UpdateCheckState.Error)) {
+        val cachedInfo = UpdateRepository.getCachedUpdateInfo()
+        if (cachedInfo != null) {
+            UpdateAvailableDialog(
+                updateInfo = cachedInfo,
+                downloadState = updateState,
+                downloadProgress = downloadProgress,
+                onDownload = { updateViewModel.downloadUpdate(cachedInfo) },
+                onDismiss = { updateViewModel.dismissUpdateDialog() }
+            )
         }
     }
 }

@@ -27,9 +27,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import kotlin.math.min
 
 enum class RepeatMode {
     OFF,
@@ -43,10 +48,25 @@ enum class RepeatMode {
     }
 }
 
+private data class PlaybackRequest(
+    val videoId: String,
+    val title: String?,
+    val artist: String?,
+    val startPositionMs: Long,
+    val resumeWhenReady: Boolean
+)
+
+private data class AudioStream(
+    val url: String,
+    val isHls: Boolean,
+    val expiresAtMs: Long
+)
+
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
     private val innerTubeClient = InnerTubeClient()
     private val mapper = InnerTubeJSONMapper()
     private val artworkEnricher = ArtworkEnricher(innerTubeClient, mapper)
+    private val connectivityObserver = NetworkConnectivityObserver(application.applicationContext)
 
     val exoPlayer: ExoPlayer = ExoPlayer.Builder(application).build().apply {
         val audioAttributes = AudioAttributes.Builder()
@@ -69,6 +89,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
+
+    private val _recoveryStatus = MutableStateFlow<String?>(null)
+    val recoveryStatus: StateFlow<String?> = _recoveryStatus
+
+    private val _isNetworkConnected = MutableStateFlow(connectivityObserver.isCurrentlyConnected())
+    val isNetworkConnected: StateFlow<Boolean> = _isNetworkConnected
 
     // Keep track of song info for display in mini player even during fallback
     private val _currentSongInfo = MutableStateFlow<SongItem?>(null)
@@ -111,9 +137,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private var isResolvingPlayback = false
     private var relatedQueueJob: Job? = null
+    private var recoveryJob: Job? = null
+    private var transientRetryCount = 0
+    private var lastPlaybackRequest: PlaybackRequest? = null
+    private val streamUrlCache = mutableMapOf<String, AudioStream>()
 
     companion object {
         private const val TAG = "PlayerViewModel"
+        private const val STREAM_URL_TTL_MS = 30 * 60 * 1000L
+        private const val MAX_TRANSIENT_RETRIES = 7
+        private const val REFRESH_STREAM_AFTER_RETRY = 3
     }
 
     init {
@@ -121,6 +154,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             innerTubeClient.ensureVisitorData()
+        }
+
+        viewModelScope.launch {
+            connectivityObserver.networkStatus.collect { isConnected ->
+                _isNetworkConnected.value = isConnected
+                if (!isConnected && hasActivePlayback()) {
+                    _error.value = null
+                    _recoveryStatus.value = "En attente du réseau"
+                    _isLoading.value = true
+                } else if (isConnected && _recoveryStatus.value != null) {
+                    scheduleTransientRecovery(forceStreamRefresh = transientRetryCount >= REFRESH_STREAM_AFTER_RETRY)
+                }
+            }
         }
 
         _volume.value = exoPlayer.volume
@@ -147,6 +193,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     Player.STATE_READY -> {
                         isResolvingPlayback = false
+                        transientRetryCount = 0
+                        _recoveryStatus.value = null
+                        _error.value = null
                         _isLoading.value = false
                         updateProgressState()
                     }
@@ -165,7 +214,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(TAG, "ExoPlayer error: ${error.message}", error)
-                _error.value = error.message
+                if (isRecoverablePlaybackError(error)) {
+                    handleTransientPlaybackError(error)
+                    return
+                }
+                _recoveryStatus.value = null
+                _error.value = error.message ?: "Lecture impossible"
                 isResolvingPlayback = false
                 _isLoading.value = false
                 updateProgressState()
@@ -178,11 +232,33 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
      * fall back to searching for the same song (like the iOS version does).
      */
     @OptIn(UnstableApi::class)
-    fun playVideo(videoId: String, songTitle: String? = null, songArtist: String? = null) {
+    fun playVideo(
+        videoId: String,
+        songTitle: String? = null,
+        songArtist: String? = null,
+        startPositionMs: Long = 0L,
+        forceStreamRefresh: Boolean = false,
+        resumeWhenReady: Boolean = true
+    ) {
         viewModelScope.launch {
             isResolvingPlayback = true
             _isLoading.value = true
             _error.value = null
+            _recoveryStatus.value = if (forceStreamRefresh) "Reconnexion..." else null
+            lastPlaybackRequest = PlaybackRequest(
+                videoId = videoId,
+                title = songTitle,
+                artist = songArtist,
+                startPositionMs = startPositionMs.coerceAtLeast(0L),
+                resumeWhenReady = resumeWhenReady
+            )
+            if (!forceStreamRefresh) {
+                transientRetryCount = 0
+                recoveryJob?.cancel()
+            }
+            if (forceStreamRefresh) {
+                streamUrlCache.remove(videoId)
+            }
 
             try {
                 innerTubeClient.ensureVisitorData()
@@ -190,7 +266,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 // --- Attempt 1: Direct play with ANDROID_VR ---
                 val resolution = resolvePlayback(videoId)
                 if (resolution != null) {
-                    startPlayback(resolution)
+                    startPlayback(resolution, startPositionMs, resumeWhenReady)
                     return@launch
                 }
 
@@ -200,7 +276,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 Log.d(TAG, "ANDROID_VR failed, trying TV_EMBEDDED for $videoId")
                 val tvResolution = resolvePlaybackTV(videoId)
                 if (tvResolution != null) {
-                    startPlayback(tvResolution)
+                    startPlayback(tvResolution, startPositionMs, resumeWhenReady)
                     return@launch
                 }
 
@@ -211,22 +287,175 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     Log.d(TAG, "Direct play failed, searching for fallback: $title $artist")
                     val fallback = findPlayableFallback(videoId, title, artist ?: "")
                     if (fallback != null) {
-                        startPlayback(fallback)
+                        startPlayback(fallback, startPositionMs, resumeWhenReady)
                         return@launch
                     }
                 }
 
-                _error.value = "Lecture impossible"
+                if (!connectivityObserver.isCurrentlyConnected()) {
+                    handleTransientResolveFailure()
+                } else {
+                    _recoveryStatus.value = null
+                    _error.value = "Lecture impossible"
+                }
                 Log.e(TAG, "All playback attempts failed for $videoId")
             } catch (e: Exception) {
                 Log.e(TAG, "Error playing video: ${e.message}", e)
-                _error.value = e.message ?: "Erreur inconnue"
+                if (isRecoverableThrowable(e)) {
+                    handleTransientResolveFailure()
+                } else {
+                    _recoveryStatus.value = null
+                    _error.value = e.message ?: "Erreur inconnue"
+                }
             } finally {
                 if (_error.value != null) {
                     isResolvingPlayback = false
                     _isLoading.value = false
                 }
             }
+        }
+    }
+
+    private fun hasActivePlayback(): Boolean {
+        return _currentTrack.value != null ||
+            _currentSongInfo.value != null ||
+            exoPlayer.currentMediaItem != null
+    }
+
+    private fun handleTransientResolveFailure() {
+        isResolvingPlayback = false
+        _error.value = null
+        _recoveryStatus.value = if (connectivityObserver.isCurrentlyConnected()) {
+            "Reconnexion..."
+        } else {
+            "En attente du réseau"
+        }
+        _isLoading.value = true
+        if (connectivityObserver.isCurrentlyConnected()) {
+            scheduleTransientRecovery(forceStreamRefresh = true)
+        }
+    }
+
+    private fun handleTransientPlaybackError(error: PlaybackException) {
+        val currentVideoId = lastPlaybackRequest?.videoId ?: _currentTrack.value?.videoId
+        Log.w(TAG, "Recoverable playback error for $currentVideoId: code=${error.errorCode}, message=${error.message}")
+        isResolvingPlayback = false
+        _error.value = null
+        _recoveryStatus.value = if (connectivityObserver.isCurrentlyConnected()) {
+            "Reconnexion..."
+        } else {
+            "En attente du réseau"
+        }
+        _isLoading.value = true
+        updateProgressState()
+
+        val forceStreamRefresh = isExpiredStreamError(error) ||
+            transientRetryCount >= REFRESH_STREAM_AFTER_RETRY
+        scheduleTransientRecovery(forceStreamRefresh = forceStreamRefresh)
+    }
+
+    private fun scheduleTransientRecovery(forceStreamRefresh: Boolean) {
+        recoveryJob?.cancel()
+
+        if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+            _recoveryStatus.value = null
+            _isLoading.value = false
+            _error.value = "Lecture impossible"
+            transientRetryCount = 0
+            return
+        }
+
+        recoveryJob = viewModelScope.launch {
+            if (!connectivityObserver.isCurrentlyConnected()) {
+                _recoveryStatus.value = "En attente du réseau"
+                return@launch
+            }
+
+            transientRetryCount += 1
+            _recoveryStatus.value = "Reconnexion..."
+            val delayMs = min(1_000L * transientRetryCount, 5_000L)
+            delay(delayMs)
+            retryCurrentPlayback(forceStreamRefresh || transientRetryCount >= REFRESH_STREAM_AFTER_RETRY)
+        }
+    }
+
+    private fun retryCurrentPlayback(forceStreamRefresh: Boolean) {
+        val request = lastPlaybackRequest
+        val resumeWhenReady = request?.resumeWhenReady ?: exoPlayer.playWhenReady || _isPlaying.value
+        val resumePosition = exoPlayer.currentPosition
+            .takeIf { it > 0L }
+            ?: _positionMs.value.takeIf { it > 0L }
+            ?: request?.startPositionMs
+            ?: 0L
+
+        if (!forceStreamRefresh && exoPlayer.currentMediaItem != null) {
+            runCatching {
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = resumeWhenReady
+            }.onFailure {
+                Log.w(TAG, "Direct ExoPlayer retry failed: ${it.message}", it)
+                request?.let { playbackRequest ->
+                    playVideo(
+                        videoId = playbackRequest.videoId,
+                        songTitle = playbackRequest.title,
+                        songArtist = playbackRequest.artist,
+                        startPositionMs = resumePosition,
+                        forceStreamRefresh = true,
+                        resumeWhenReady = resumeWhenReady
+                    )
+                }
+            }
+            return
+        }
+
+        if (request != null) {
+            streamUrlCache.remove(request.videoId)
+            playVideo(
+                videoId = request.videoId,
+                songTitle = request.title,
+                songArtist = request.artist,
+                startPositionMs = resumePosition,
+                forceStreamRefresh = true,
+                resumeWhenReady = resumeWhenReady
+            )
+        } else if (exoPlayer.currentMediaItem != null) {
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = resumeWhenReady
+        }
+    }
+
+    private fun isRecoverablePlaybackError(error: PlaybackException): Boolean {
+        return !connectivityObserver.isCurrentlyConnected() ||
+            error.errorCode in setOf(
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                PlaybackException.ERROR_CODE_TIMEOUT,
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+                PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
+            ) ||
+            isRecoverableThrowable(error.cause)
+    }
+
+    private fun isExpiredStreamError(error: PlaybackException): Boolean {
+        val message = listOfNotNull(error.message, error.cause?.message)
+            .joinToString(" ")
+            .lowercase()
+        return error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+            message.contains("403") ||
+            message.contains("410") ||
+            message.contains("expired") ||
+            message.contains("forbidden")
+    }
+
+    private fun isRecoverableThrowable(throwable: Throwable?): Boolean {
+        return when (throwable) {
+            null -> !connectivityObserver.isCurrentlyConnected()
+            is ConnectException,
+            is UnknownHostException,
+            is SocketTimeoutException -> true
+            else -> isRecoverableThrowable(throwable.cause)
         }
     }
 
@@ -461,7 +690,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Get the best audio URL from a player payload (prefers audio/mp4, highest bitrate).
      */
-    private fun bestAudioUrl(payload: PlayerPayload): String? {
+    private fun bestAudioStream(payload: PlayerPayload): AudioStream? {
+        streamUrlCache[payload.videoId]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let {
+            return it
+        }
+
         val directAudio = payload.formats
             .filter { it.mimeType.startsWith("audio/") && !it.url.isNullOrEmpty() }
             .sortedByDescending {
@@ -470,7 +703,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
             .firstOrNull()
             ?.url
-        if (!directAudio.isNullOrEmpty()) return directAudio
+        if (!directAudio.isNullOrEmpty()) return cacheStream(payload.videoId, directAudio, isHls = false)
 
         // Some responses expose progressive muxed streams instead of audio/*.
         val progressiveWithAudio = payload.formats
@@ -482,18 +715,39 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             .sortedByDescending { it.bitrate }
             .firstOrNull()
             ?.url
-        if (!progressiveWithAudio.isNullOrEmpty()) return progressiveWithAudio
+        if (!progressiveWithAudio.isNullOrEmpty()) return cacheStream(payload.videoId, progressiveWithAudio, isHls = false)
 
         // Fallbacks observed on some payloads: HLS and server ABR URL.
-        return payload.hlsManifestUrl
-            ?: payload.serverAbrStreamingUrl
+        return when {
+            !payload.hlsManifestUrl.isNullOrEmpty() -> cacheStream(payload.videoId, payload.hlsManifestUrl, isHls = true)
+            !payload.serverAbrStreamingUrl.isNullOrEmpty() -> cacheStream(payload.videoId, payload.serverAbrStreamingUrl, isHls = false)
+            else -> null
+        }
+    }
+
+    private fun bestAudioUrl(payload: PlayerPayload): String? {
+        return bestAudioStream(payload)?.url
+    }
+
+    private fun cacheStream(videoId: String, url: String, isHls: Boolean): AudioStream {
+        val stream = AudioStream(
+            url = url,
+            isHls = isHls,
+            expiresAtMs = System.currentTimeMillis() + STREAM_URL_TTL_MS
+        )
+        streamUrlCache[videoId] = stream
+        return stream
     }
 
     /**
      * Start playback with ExoPlayer.
      */
     @OptIn(UnstableApi::class)
-    private fun startPlayback(payload: PlayerPayload) {
+    private fun startPlayback(
+        payload: PlayerPayload,
+        startPositionMs: Long = 0L,
+        resumeWhenReady: Boolean = true
+    ) {
         _currentTrack.value = payload
         viewModelScope.launch {
             enrichedCurrentSongInfo(payload)?.let { enriched ->
@@ -502,24 +756,25 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         _error.value = null
-        _positionMs.value = 0L
+        _recoveryStatus.value = null
+        _positionMs.value = startPositionMs.coerceAtLeast(0L)
         _durationMs.value = (payload.durationSeconds ?: 0L) * 1000L
         updateQueueCapabilities()
 
-        val urlToPlay = bestAudioUrl(payload)
-        if (urlToPlay != null) {
+        val stream = bestAudioStream(payload)
+        if (stream != null) {
             Log.d(TAG, "Playing: ${payload.title} by ${payload.author}")
-            val mediaItem = if (payload.hlsManifestUrl == urlToPlay) {
+            val mediaItem = if (stream.isHls) {
                 MediaItem.Builder()
-                    .setUri(urlToPlay)
+                    .setUri(stream.url)
                     .setMimeType(MimeTypes.APPLICATION_M3U8)
                     .build()
             } else {
-                MediaItem.fromUri(urlToPlay)
+                MediaItem.fromUri(stream.url)
             }
-            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.setMediaItem(mediaItem, startPositionMs.coerceAtLeast(0L))
             exoPlayer.prepare()
-            exoPlayer.play()
+            exoPlayer.playWhenReady = resumeWhenReady
         } else {
             Log.e(TAG, "No playable URL found for ${payload.videoId}")
             isResolvingPlayback = false
@@ -531,6 +786,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
         } else {
+            if (exoPlayer.playbackState == Player.STATE_IDLE && exoPlayer.currentMediaItem != null) {
+                exoPlayer.prepare()
+            }
             exoPlayer.play()
         }
     }
@@ -754,6 +1012,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         super.onCleared()
+        recoveryJob?.cancel()
+        connectivityObserver.unregister()
         exoPlayer.release()
     }
 }
