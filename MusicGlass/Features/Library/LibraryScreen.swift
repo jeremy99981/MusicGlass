@@ -6,10 +6,12 @@ struct LibraryScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject var viewModel: LibraryViewModel
     @State private var showSettings = false
+    var playerDestination: Binding<MusicDestination?> = .constant(nil)
+    @State private var navigationPath: [MusicDestination] = []
     @AppStorage("musicglass.loginFlowInProgress") private var loginFlowInProgress = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             List {
                 quickAccess
                 ytPlaylistsSection
@@ -47,6 +49,11 @@ struct LibraryScreen: View {
             }
             .navigationDestination(for: MusicDestination.self) { destination in
                 destinationView(destination)
+            }
+            .onChange(of: playerDestination.wrappedValue) { _, destination in
+                guard let destination else { return }
+                navigationPath.append(destination)
+                playerDestination.wrappedValue = nil
             }
         }
     }

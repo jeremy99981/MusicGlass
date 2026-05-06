@@ -9,6 +9,7 @@ struct FullPlayerScreen: View {
     var dismiss: () -> Void
     var showQueue: () -> Void
     var showLyrics: (Track) -> Void
+    var openArtist: (Artist) -> Void
 
     var body: some View {
         GeometryReader { proxy in
@@ -150,11 +151,30 @@ struct FullPlayerScreen: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.84)
 
-                Text(artistLine)
-                    .font(.title3.weight(.regular))
-                    .foregroundStyle(.white.opacity(0.76))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                if let primaryArtist {
+                    Button {
+                        openArtist(primaryArtist)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(artistLine)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.82)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .opacity(0.72)
+                        }
+                        .font(.title3.weight(.regular))
+                        .foregroundStyle(.white.opacity(0.78))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Ouvrir l'artiste \(primaryArtist.name)")
+                } else {
+                    Text(artistLine)
+                        .font(.title3.weight(.regular))
+                        .foregroundStyle(.white.opacity(0.76))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
 
                 playerStatus
             }
@@ -261,6 +281,21 @@ struct FullPlayerScreen: View {
     private var artistLine: String {
         let value = player.currentTrack?.artistLine.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? "MusicGlass" : value
+    }
+
+    private var primaryArtist: Artist? {
+        let trackArtists = player.currentTrack?.artists ?? []
+        let albumArtists = player.currentTrack?.album?.artists ?? []
+        if let artist = (trackArtists + albumArtists).first(where: { artist in
+            guard let browseId = artist.browseId else { return false }
+            return !browseId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            return artist
+        }
+
+        let name = artistLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != "MusicGlass" else { return nil }
+        return Artist(id: name.lowercased(), browseId: nil, name: name)
     }
 
     private var displayedDuration: TimeInterval {

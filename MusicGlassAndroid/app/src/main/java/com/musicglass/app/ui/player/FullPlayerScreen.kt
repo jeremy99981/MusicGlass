@@ -1,0 +1,628 @@
+package com.musicglass.app.ui.player
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.musicglass.app.playback.PlayerViewModel
+import com.musicglass.app.playback.RepeatMode
+import com.musicglass.app.youtubemusic.bestThumbnailUrl
+import kotlin.math.max
+
+@Composable
+fun FullPlayerDialog(
+    viewModel: PlayerViewModel,
+    onDismiss: () -> Unit,
+    onArtistClick: (String, String?) -> Unit = { _, _ -> }
+) {
+    val currentTrack by viewModel.currentTrack.collectAsState()
+    val currentSongInfo by viewModel.currentSongInfo.collectAsState()
+
+    if (currentTrack == null && currentSongInfo == null) return
+
+    BackHandler(onBack = onDismiss)
+
+    FullPlayerScreen(
+        viewModel = viewModel,
+        onDismiss = onDismiss,
+        onArtistClick = onArtistClick
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FullPlayerScreen(
+    viewModel: PlayerViewModel,
+    onDismiss: () -> Unit,
+    onArtistClick: (String, String?) -> Unit
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val currentTrack by viewModel.currentTrack.collectAsState()
+    val currentSongInfo by viewModel.currentSongInfo.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val positionMs by viewModel.positionMs.collectAsState()
+    val durationMs by viewModel.durationMs.collectAsState()
+    val volume by viewModel.volume.collectAsState()
+    val repeatMode by viewModel.repeatMode.collectAsState()
+    val shuffleEnabled by viewModel.shuffleEnabled.collectAsState()
+    val canSkipNext by viewModel.canSkipNext.collectAsState()
+    val canSkipPrevious by viewModel.canSkipPrevious.collectAsState()
+
+    val artworkUrl = resolvedArtworkUrl(
+        albumArtwork = currentSongInfo?.album?.thumbnails?.bestThumbnailUrl(),
+        songArtwork = currentSongInfo?.thumbnails?.bestThumbnailUrl(),
+        payloadArtwork = currentTrack?.thumbnails?.bestThumbnailUrl()
+    )?.highResolutionArtworkUrl()
+    val title = currentSongInfo?.title?.takeIf { it.isNotBlank() }
+        ?: currentTrack?.title?.takeIf { it.isNotBlank() }
+        ?: "Aucun titre"
+    val subtitle = currentSongInfo?.artists
+        ?.joinToString(", ") { it.name.trim() }
+        ?.takeIf { it.isNotBlank() }
+        ?: currentTrack?.author?.takeIf { !it.isNullOrBlank() }
+        ?: "MusicGlass"
+    val primaryArtist = currentSongInfo?.artists
+        ?.firstOrNull { it.name.isNotBlank() }
+    val primaryArtistName = primaryArtist?.name?.trim()
+        ?: subtitle.takeIf { it.isNotBlank() && it != "MusicGlass" }
+    val primaryArtistBrowseId = primaryArtist?.browseId?.takeIf { it.isNotBlank() }
+    val statusMessage = when {
+        !error.isNullOrBlank() -> error
+        isLoading && isPlaying -> "Mise en mémoire"
+        isLoading -> "Préparation du flux"
+        else -> null
+    }
+
+    var sliderPosition by remember { mutableFloatStateOf(0f) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+    var showQueue by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val lyricsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val dismissThresholdPx = with(density) { 118.dp.toPx() }
+
+    LaunchedEffect(positionMs, durationMs, isSeeking) {
+        if (!isSeeking) {
+            sliderPosition = positionMs.coerceIn(0L, max(durationMs, 0L)).toFloat()
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF111A1A))
+            .graphicsLayer {
+                translationY = dragOffsetPx.coerceAtLeast(0f)
+            }
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onVerticalDrag = { _, dragAmount ->
+                        dragOffsetPx = (dragOffsetPx + dragAmount).coerceAtLeast(0f)
+                    },
+                    onDragEnd = {
+                        if (dragOffsetPx > dismissThresholdPx) {
+                            onDismiss()
+                        } else {
+                            dragOffsetPx = 0f
+                        }
+                    },
+                    onDragCancel = {
+                        dragOffsetPx = 0f
+                    }
+                )
+            }
+    ) {
+        val isCompact = maxHeight < 820.dp
+        val artworkSize = minOf(
+            maxWidth - 70.dp,
+            maxHeight * if (isCompact) 0.36f else 0.40f,
+            360.dp
+        ).coerceAtLeast(260.dp)
+
+        if (artworkUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(artworkUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = 1.24f
+                        scaleY = 1.24f
+                    }
+                    .blur(72.dp)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.16f),
+                            Color(0xAA3B4B4A),
+                            Color(0xF0101A1A)
+                        )
+                    )
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(start = 30.dp, end = 30.dp, top = 10.dp, bottom = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            IconButton(onClick = onDismiss) {
+                Box(
+                    modifier = Modifier
+                        .width(48.dp)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.White.copy(alpha = 0.62f))
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White.copy(alpha = 0.08f),
+                tonalElevation = 0.dp,
+                shadowElevation = 16.dp
+            ) {
+                if (artworkUrl != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(artworkUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(artworkSize)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(artworkSize)
+                            .background(Color.White.copy(alpha = 0.10f))
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.76f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable(enabled = primaryArtistName != null) {
+                            primaryArtistName?.let { onArtistClick(it, primaryArtistBrowseId) }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = statusMessage ?: " ",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (error != null) MaterialTheme.colorScheme.error else Color.White.copy(alpha = 0.62f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FrostedCircleButton(onClick = {}) {
+                        Icon(Icons.Filled.FavoriteBorder, contentDescription = "Favori", tint = Color.White)
+                    }
+                    FrostedCircleButton(onClick = {}) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Plus", tint = Color.White)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Slider(
+                value = sliderPosition.coerceIn(0f, durationMs.toFloat().coerceAtLeast(0f)),
+                onValueChange = {
+                    isSeeking = true
+                    sliderPosition = it
+                },
+                onValueChangeFinished = {
+                    viewModel.seekTo(sliderPosition.toLong())
+                    isSeeking = false
+                },
+                valueRange = 0f..durationMs.toFloat().coerceAtLeast(0f).let { if (it <= 0f) 1f else it },
+                enabled = durationMs > 0L,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color.White,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.24f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = (if (isSeeking) sliderPosition.toLong() else positionMs).toMusicTime(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.62f)
+                )
+                Text(
+                    text = "-${max(durationMs - (if (isSeeking) sliderPosition.toLong() else positionMs), 0L).toMusicTime()}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.48f)
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PlayerTransportButton(
+                    enabled = canSkipPrevious,
+                    onClick = viewModel::previous
+                ) {
+                    Icon(
+                        Icons.Filled.SkipPrevious,
+                        contentDescription = "Précédent",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                FilledIconButton(
+                    onClick = viewModel::togglePlayPause,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = Color.White.copy(alpha = 0.16f),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.size(96.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Lecture",
+                            modifier = Modifier.size(52.dp)
+                        )
+                    }
+                }
+
+                PlayerTransportButton(
+                    enabled = canSkipNext,
+                    onClick = { viewModel.next() }
+                ) {
+                    Icon(
+                        Icons.Filled.SkipNext,
+                        contentDescription = "Suivant",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.VolumeDown,
+                    contentDescription = "Volume bas",
+                    tint = Color.White.copy(alpha = 0.62f)
+                )
+                Slider(
+                    value = volume,
+                    onValueChange = { viewModel.setVolume(it) },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White.copy(alpha = 0.92f),
+                        inactiveTrackColor = Color.White.copy(alpha = 0.24f)
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp)
+                )
+                Icon(
+                    Icons.Filled.VolumeUp,
+                    contentDescription = "Volume haut",
+                    tint = Color.White.copy(alpha = 0.62f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FrostedCircleButton(onClick = { showLyrics = true }) {
+                    Icon(Icons.Filled.FormatQuote, contentDescription = "Paroles", tint = Color.White)
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = Color.White.copy(alpha = 0.12f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        UtilityToggleButton(
+                            active = repeatMode != RepeatMode.OFF,
+                            onClick = viewModel::cycleRepeatMode
+                        ) {
+                            Icon(
+                                imageVector = if (repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                                contentDescription = "Répétition",
+                                tint = if (repeatMode != RepeatMode.OFF) Color.White else Color.White.copy(alpha = 0.72f)
+                            )
+                        }
+
+                        UtilityDivider()
+
+                        UtilityToggleButton(
+                            active = shuffleEnabled,
+                            onClick = viewModel::toggleShuffle
+                        ) {
+                            Icon(
+                                Icons.Filled.Shuffle,
+                                contentDescription = "Aléatoire",
+                                tint = if (shuffleEnabled) Color.White else Color.White.copy(alpha = 0.72f)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                FrostedCircleButton(onClick = { showQueue = true }) {
+                    Icon(Icons.Filled.FormatListBulleted, contentDescription = "File d'attente", tint = Color.White)
+                }
+            }
+        }
+        
+        if (showQueue) {
+            ModalBottomSheet(
+                onDismissRequest = { showQueue = false },
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.background,
+                windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
+            ) {
+                QueueScreen(
+                    viewModel = viewModel,
+                    onDismiss = { showQueue = false }
+                )
+            }
+        }
+        
+        if (showLyrics) {
+            ModalBottomSheet(
+                onDismissRequest = { showLyrics = false },
+                sheetState = lyricsSheetState,
+                containerColor = MaterialTheme.colorScheme.background,
+                windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
+            ) {
+                LyricsScreen(
+                    title = title,
+                    artistLine = subtitle,
+                    artworkUrl = artworkUrl,
+                    durationSeconds = if (durationMs > 0) durationMs / 1000.0 else null,
+                    onDismiss = { showLyrics = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FrostedCircleButton(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        colors = IconButtonDefaults.iconButtonColors(
+            containerColor = Color.White.copy(alpha = 0.12f),
+            contentColor = Color.White
+        ),
+        modifier = Modifier.size(44.dp)
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun PlayerTransportButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        colors = IconButtonDefaults.iconButtonColors(
+            containerColor = Color.Transparent,
+            contentColor = Color.White,
+            disabledContentColor = Color.White.copy(alpha = 0.32f)
+        ),
+        modifier = Modifier.size(72.dp)
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun UtilityToggleButton(
+    active: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        colors = IconButtonDefaults.iconButtonColors(
+            containerColor = Color.Transparent,
+            contentColor = if (active) Color.White else Color.White.copy(alpha = 0.72f)
+        ),
+        modifier = Modifier.size(48.dp)
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun UtilityDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(22.dp)
+            .background(Color.White.copy(alpha = 0.18f))
+    )
+}
+
+private fun resolvedArtworkUrl(
+    albumArtwork: String?,
+    songArtwork: String?,
+    payloadArtwork: String?
+): String? {
+    return albumArtwork ?: songArtwork ?: payloadArtwork
+}
+
+private fun String.highResolutionArtworkUrl(): String {
+    return when {
+        contains("googleusercontent.com") -> upgradeGoogleArtworkUrl()
+        contains("ytimg.com") -> upgradeYouTubeArtworkUrl()
+        else -> this
+    }
+}
+
+private fun String.upgradeGoogleArtworkUrl(): String {
+    val sizeSuffix = Regex("=w\\d+-h\\d+[^/?#]*$")
+    return if (sizeSuffix.containsMatchIn(this)) {
+        replace(sizeSuffix, "=w1200-h1200-l90-rj")
+    } else {
+        "$this=w1200-h1200-l90-rj"
+    }
+}
+
+private fun String.upgradeYouTubeArtworkUrl(): String {
+    val videoId = Regex("/vi/([^/]+)/").find(this)?.groupValues?.getOrNull(1) ?: return this
+    return "https://i.ytimg.com/vi/$videoId/maxresdefault.jpg"
+}
+
+private fun Long.toMusicTime(): String {
+    val totalSeconds = (this / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
+}

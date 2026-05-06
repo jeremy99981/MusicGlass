@@ -22,9 +22,9 @@ final class AlbumDetailViewModel: ObservableObject {
         Task {
             do {
                 let loadedAlbum = try await client.getAlbum(browseId: browseId)
-                album = loadedAlbum
+                album = loadedAlbum.musicGlassNormalizedAlbumTracks()
                 isLoading = false
-                await refreshArtwork(for: loadedAlbum)
+                await refreshArtwork(for: loadedAlbum.musicGlassNormalizedAlbumTracks())
             } catch {
                 errorMessage = error.localizedDescription
                 isLoading = false
@@ -48,7 +48,76 @@ final class AlbumDetailViewModel: ObservableObject {
     private func updateTracks(_ tracks: [Track], for albumId: String) {
         guard var current = album, current.id == albumId else { return }
         current.tracks = tracks
+        current = current.musicGlassNormalizedAlbumTracks()
         album = current
+    }
+}
+
+private extension Album {
+    func musicGlassNormalizedAlbumTracks() -> Album {
+        var normalized = self
+        guard !tracks.isEmpty else { return normalized }
+
+        let albumArtists = artists
+        let albumArtwork = thumbnails
+        let albumContext = Album(
+            id: id,
+            browseId: browseId,
+            title: title,
+            artists: artists,
+            year: year,
+            thumbnails: thumbnails
+        )
+
+        normalized.tracks = tracks.map { track in
+            var track = track
+            let usefulTrackArtists = track.artists.filter { artist in
+                let key = artist.name.musicGlassDetailFoldedKey
+                return !key.isEmpty && !artist.name.musicGlassIsGenericDetailArtistLabel
+            }
+
+            if !albumArtists.isEmpty {
+                track.artists = albumArtists
+            } else {
+                track.artists = usefulTrackArtists
+            }
+
+            track.album = albumContext
+            if !albumArtwork.isEmpty {
+                track.thumbnails = albumArtwork
+            }
+            return track
+        }
+
+        return normalized
+    }
+}
+
+private extension String {
+    var musicGlassIsGenericDetailArtistLabel: Bool {
+        [
+            "album",
+            "single",
+            "ep",
+            "song",
+            "songs",
+            "titre",
+            "titres",
+            "morceau",
+            "morceaux",
+            "video",
+            "videos",
+            "artist",
+            "artiste",
+            "playlist",
+            "playlists"
+        ].contains(musicGlassDetailFoldedKey)
+    }
+
+    var musicGlassDetailFoldedKey: String {
+        folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

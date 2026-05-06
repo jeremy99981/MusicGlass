@@ -87,8 +87,16 @@ struct InnerTubeJSONMapper: Sendable {
                 return track
             }
             .uniquedBy(\.id)
-        let trackArtists = parsedTracks.flatMap(\.artists).uniquedBy(\.id)
-        let artists = headerArtists(from: value, title: title).ifEmpty(trackArtists)
+        let titleKey = stableId(title)
+        let trackArtists = parsedTracks
+            .flatMap(\.artists)
+            .filter { !$0.name.musicGlassIsGenericMusicRoleLabel && stableId($0.name) != titleKey }
+            .uniquedBy(\.id)
+        let headerArtists = headerArtists(from: value, title: title)
+        let inferredArtists = dominantAlbumArtists(from: parsedTracks, albumTitle: title)
+        let artists = headerArtists
+            .ifEmpty(inferredArtists)
+            .ifEmpty(trackArtists)
         let albumContext = Album(
             id: browseId,
             browseId: browseId,
@@ -104,7 +112,10 @@ struct InnerTubeJSONMapper: Sendable {
             if track.album == nil || (track.album?.thumbnails.isEmpty ?? true) {
                 track.album = albumContext
             }
-            if track.artists.isEmpty, !artists.isEmpty {
+            if !thumbnails.isEmpty {
+                track.thumbnails = thumbnails
+            }
+            if !artists.isEmpty {
                 track.artists = artists
             }
             return track
@@ -271,6 +282,33 @@ private extension InnerTubeJSONMapper {
             }
             return nil
         }
+    }
+
+    func dominantAlbumArtists(from tracks: [Track], albumTitle: String) -> [Artist] {
+        let albumKey = stableId(albumTitle)
+        var counts: [String: Int] = [:]
+        var artistsByKey: [String: Artist] = [:]
+
+        for track in tracks {
+            let trackArtists = track.artists
+                .filter { !$0.name.musicGlassIsGenericMusicRoleLabel && stableId($0.name) != albumKey }
+                .uniquedBy(\.id)
+            for artist in trackArtists {
+                let key = stableId(artist.name)
+                guard !key.isEmpty else { continue }
+                counts[key, default: 0] += 1
+                artistsByKey[key] = artistsByKey[key] ?? artist
+            }
+        }
+
+        guard let maxCount = counts.values.max(), maxCount >= 2 else { return [] }
+        let minimumDominantCount = max(2, Int(ceil(Double(tracks.count) * 0.35)))
+        guard maxCount >= minimumDominantCount else { return [] }
+
+        return counts
+            .filter { $0.value == maxCount }
+            .compactMap { artistsByKey[$0.key] }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func mapResponsiveRenderer(_ renderer: JSONValue) -> MappedItem? {
@@ -558,6 +596,7 @@ private extension InnerTubeJSONMapper {
 
     func headerTitle(from value: JSONValue) -> String? {
         let headerKeys = [
+            "musicImmersiveHeaderRenderer",
             "musicResponsiveHeaderRenderer",
             "musicDetailHeaderRenderer",
             "musicEditablePlaylistDetailHeaderRenderer",
@@ -574,7 +613,7 @@ private extension InnerTubeJSONMapper {
     }
 
     func headerThumbnails(from value: JSONValue) -> [Thumbnail] {
-        let headers = ["musicResponsiveHeaderRenderer", "musicDetailHeaderRenderer", "musicEditablePlaylistDetailHeaderRenderer", "musicVisualHeaderRenderer"]
+        let headers = ["musicImmersiveHeaderRenderer", "musicResponsiveHeaderRenderer", "musicDetailHeaderRenderer", "musicEditablePlaylistDetailHeaderRenderer", "musicVisualHeaderRenderer"]
         for key in headers {
             for header in value.collectObjects(named: key) {
                 let found = thumbnails(from: header["thumbnail"])
@@ -665,6 +704,7 @@ private extension InnerTubeJSONMapper {
 
     func headerObjects(in value: JSONValue) -> [JSONValue] {
         [
+            "musicImmersiveHeaderRenderer",
             "musicResponsiveHeaderRenderer",
             "musicDetailHeaderRenderer",
             "musicEditablePlaylistDetailHeaderRenderer",
@@ -675,7 +715,7 @@ private extension InnerTubeJSONMapper {
 
     func artists(from runs: [TextRun], subtitle: String) -> [Artist] {
         let candidates = runs.filter { $0.pageType?.contains("ARTIST") == true || $0.browseId?.hasPrefix("UC") == true }
-        let selected = candidates.isEmpty ? Array(runs.prefix(1)).filter { !parseDuration($0.text).isSome } : candidates
+        let selected = candidates.isEmpty ? Array(runs.prefix(1)).filter { !parseDuration($0.text).isSome && !$0.text.musicGlassIsGenericMusicRoleLabel } : candidates
         let mapped = selected.map { Artist(id: $0.browseId ?? stableId($0.text), browseId: $0.browseId, name: $0.text) }.uniquedBy(\.id)
         if !mapped.isEmpty {
             return mapped
@@ -763,7 +803,8 @@ private extension InnerTubeJSONMapper {
                 !text.localizedCaseInsensitiveContains("song") &&
                 !text.localizedCaseInsensitiveContains("morceau") &&
                 !text.localizedCaseInsensitiveContains("album") &&
-                !text.localizedCaseInsensitiveContains("playlist")
+                !text.localizedCaseInsensitiveContains("playlist") &&
+                !text.musicGlassIsGenericMusicRoleLabel
             }
             .map { Artist(id: stableId($0), name: $0) }
             .uniquedBy(\.id)
@@ -792,6 +833,26 @@ private extension String {
         folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var musicGlassIsGenericMusicRoleLabel: Bool {
+        [
+            "album",
+            "single",
+            "ep",
+            "song",
+            "songs",
+            "titre",
+            "titres",
+            "morceau",
+            "morceaux",
+            "video",
+            "videos",
+            "artist",
+            "artiste",
+            "playlist",
+            "playlists"
+        ].contains(musicGlassFolded)
     }
 
     var hasMusicGlassBlockedPlayableSignal: Bool {

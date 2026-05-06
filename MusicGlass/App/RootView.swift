@@ -10,6 +10,7 @@ struct RootView: View {
     @State private var homeViewModel: HomeViewModel?
     @State private var searchViewModel: SearchViewModel?
     @State private var libraryViewModel: LibraryViewModel?
+    @State private var playerNavigationDestination: MusicDestination?
     @Namespace private var playerNamespace
     #if DEBUG
     private let shouldAutoOpenDebugPlayer = ProcessInfo.processInfo.environment["MUSICGLASS_DEBUG_OPEN_PLAYER"] == "1"
@@ -48,16 +49,23 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             if let homeViewModel, let searchViewModel, let libraryViewModel {
                 TabView(selection: $selectedTab) {
-                    HomeScreen(viewModel: homeViewModel)
+                    HomeScreen(
+                        viewModel: homeViewModel,
+                        playerDestination: selectedTab == .home ? $playerNavigationDestination : .constant(nil)
+                    )
                         .tabItem { Label("Accueil", systemImage: "house.fill") }
                         .tag(AppTab.home)
 
-                    SearchScreen(viewModel: searchViewModel)
+                    SearchScreen(
+                        viewModel: searchViewModel,
+                        playerDestination: selectedTab == .search ? $playerNavigationDestination : .constant(nil)
+                    )
                         .tabItem { Label("Recherche", systemImage: "magnifyingglass") }
                         .tag(AppTab.search)
 
                     LibraryScreen(
-                        viewModel: libraryViewModel
+                        viewModel: libraryViewModel,
+                        playerDestination: selectedTab == .library ? $playerNavigationDestination : .constant(nil)
                     )
                     .tabItem { Label("Bibliothèque", systemImage: "square.stack.fill") }
                     .tag(AppTab.library)
@@ -83,6 +91,8 @@ struct RootView: View {
                 activePlayerSheet = .queue
             } showLyrics: { track in
                 activePlayerSheet = .lyrics(track)
+            } openArtist: { artist in
+                openArtistFromPlayer(artist)
             }
         }
         .sheet(item: secondaryPlayerSheet) { sheet in
@@ -144,6 +154,29 @@ struct RootView: View {
             youTubeMusicClient: container.youTubeMusicClient,
             authService: container.authService
         )
+    }
+
+    private func openArtistFromPlayer(_ artist: Artist) {
+        activePlayerSheet = nil
+        if let browseId = artist.browseId?.trimmingCharacters(in: .whitespacesAndNewlines), !browseId.isEmpty {
+            playerNavigationDestination = .artist(browseId)
+            return
+        }
+
+        let artistName = artist.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !artistName.isEmpty else { return }
+        Task {
+            let result = try? await container.youTubeMusicClient.search(query: artistName, filter: .artists)
+            let resolvedArtist = result?.artists.first { candidate in
+                candidate.name.localizedCaseInsensitiveCompare(artistName) == .orderedSame &&
+                    !(candidate.browseId?.isEmpty ?? true)
+            } ?? result?.artists.first { !(($0.browseId ?? "").isEmpty) }
+
+            guard let browseId = resolvedArtist?.browseId, !browseId.isEmpty else { return }
+            await MainActor.run {
+                playerNavigationDestination = .artist(browseId)
+            }
+        }
     }
 }
 

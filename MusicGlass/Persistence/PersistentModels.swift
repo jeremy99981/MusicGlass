@@ -29,7 +29,7 @@ final class StoredTrackRecord {
         self.trackId = track.id
         self.videoId = track.videoId
         self.title = track.title
-        self.artistLine = track.artistLine
+        self.artistLine = track.artistLine.musicGlassCleanStoredArtistLine
         self.albumTitle = track.album?.title
         self.duration = track.duration
         self.thumbnailURLString = track.bestThumbnailURL?.absoluteString
@@ -46,7 +46,7 @@ final class StoredTrackRecord {
         trackId = track.id
         videoId = track.videoId
         title = track.title
-        artistLine = track.artistLine
+        artistLine = track.artistLine.musicGlassCleanStoredArtistLine
         albumTitle = track.album?.title
         duration = track.duration
         thumbnailURLString = track.bestThumbnailURL?.absoluteString
@@ -60,7 +60,7 @@ final class StoredTrackRecord {
         let artists = artistLine
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && !$0.musicGlassIsGenericStoredArtistLabel }
             .map { Artist(id: $0.lowercased(), name: $0) }
         let thumbnails = thumbnailURLString.flatMap(URL.init(string:)).map { [Thumbnail(url: $0, width: nil, height: nil)] } ?? []
         let album = albumTitle.map { Album(id: $0.lowercased(), title: $0) }
@@ -74,6 +74,41 @@ final class StoredTrackRecord {
             thumbnails: thumbnails,
             isLiked: isLiked
         )
+    }
+}
+
+private extension String {
+    var musicGlassCleanStoredArtistLine: String {
+        split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !$0.musicGlassIsGenericStoredArtistLabel }
+            .joined(separator: ", ")
+    }
+
+    var musicGlassIsGenericStoredArtistLabel: Bool {
+        [
+            "album",
+            "single",
+            "ep",
+            "song",
+            "songs",
+            "titre",
+            "titres",
+            "morceau",
+            "morceaux",
+            "video",
+            "videos",
+            "artist",
+            "artiste",
+            "playlist",
+            "playlists"
+        ].contains(musicGlassStoredFolded)
+    }
+
+    var musicGlassStoredFolded: String {
+        folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

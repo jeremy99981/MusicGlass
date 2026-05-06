@@ -35,12 +35,51 @@ struct YouTubeMusicClient: YouTubeMusicClientProtocol {
     }
 
     func search(query: String, filter: SearchFilter?) async throws -> SearchResult {
-        let value = try await innerTubeClient.search(query: query, filter: filter)
-        let result = mapper.mapSearchResult(from: value)
-        guard !result.isEmpty else {
+        if filter == nil || filter == .all {
+            async let allTask = searchWithFallback(query: query, filter: nil)
+            async let artistsTask = searchWithFallback(query: query, filter: .artists)
+            async let songsTask = searchWithFallback(query: "\(query) meilleurs titres", filter: .songs)
+            async let albumsTask = searchWithFallback(query: "\(query) albums", filter: .albums)
+            
+            let all = await allTask
+            let artistsSearch = await artistsTask
+            let songsSearch = await songsTask
+            let albumsSearch = await albumsTask
+            
+            var allArtists = (artistsSearch.artists + all.artists).uniquedBy(\.id)
+            allArtists.sort { a1, a2 in
+                if a1.name.caseInsensitiveCompare(query) == .orderedSame && a2.name.caseInsensitiveCompare(query) != .orderedSame { return true }
+                return false
+            }
+            
+            let allSongs = (songsSearch.tracks + all.tracks).uniquedBy(\.id)
+            let allAlbums = (albumsSearch.albums + all.albums).uniquedBy(\.id)
+            
+            let merged = SearchResult(
+                tracks: Array(allSongs.prefix(20)),
+                albums: Array(allAlbums.prefix(14)),
+                artists: Array(allArtists.prefix(6)),
+                playlists: Array(all.playlists.prefix(12)),
+                videos: all.videos
+            )
+            return applyLocalFilter(sanitize(merged), filter: filter)
+        } else {
+            let value = try await innerTubeClient.search(query: query, filter: filter)
+            let result = mapper.mapSearchResult(from: value)
+            guard !result.isEmpty else {
+                return .empty
+            }
+            return applyLocalFilter(sanitize(result), filter: filter)
+        }
+    }
+
+    private func searchWithFallback(query: String, filter: SearchFilter?) async -> SearchResult {
+        do {
+            let value = try await innerTubeClient.search(query: query, filter: filter)
+            return mapper.mapSearchResult(from: value)
+        } catch {
             return .empty
         }
-        return applyLocalFilter(sanitize(result), filter: filter)
     }
 
     func getHome() async throws -> HomeFeed {
@@ -63,20 +102,38 @@ struct YouTubeMusicClient: YouTubeMusicClientProtocol {
     }
 
     func getPlaylist(browseId: String) async throws -> Playlist {
-        let value = try await innerTubeClient.browse(browseId: browseId)
-        var playlist = mapper.mapPlaylist(from: value, browseId: browseId)
-        if playlist.tracks.isEmpty, let playlistId = browseId.musicGlassPlainPlaylistId,
+        let candidates = [browseId, browseId.hasPrefix("VL") ? browseId : "VL\(browseId)"].uniqued()
+
+        for candidate in candidates {
+            if let value = try? await innerTubeClient.browse(browseId: candidate, useAuth: false) {
+                let playlist = mapper.mapPlaylist(from: value, browseId: candidate)
+                if !playlist.tracks.isEmpty { return await enrichWithQueue(playlist, candidate) }
+            }
+            if let value = try? await innerTubeClient.browse(browseId: candidate, useAuth: true) {
+                let playlist = mapper.mapPlaylist(from: value, browseId: candidate)
+                if !playlist.tracks.isEmpty { return await enrichWithQueue(playlist, candidate) }
+            }
+        }
+
+        let fallbackValue = try await innerTubeClient.browse(browseId: browseId, useAuth: true)
+        let fallbackPlaylist = mapper.mapPlaylist(from: fallbackValue, browseId: browseId)
+        return await enrichWithQueue(fallbackPlaylist, browseId)
+    }
+
+    private func enrichWithQueue(_ playlist: Playlist, _ browseId: String) async -> Playlist {
+        var enriched = playlist
+        if enriched.tracks.isEmpty, let playlistId = browseId.musicGlassPlainPlaylistId,
            let queueValue = try? await innerTubeClient.playlistQueue(playlistId: playlistId) {
             let tracks = mapper.mapNextTracks(from: queueValue)
                 .filter(\.musicGlassIsLikelyMusicTrack)
                 .uniquedBy(\.id)
             if !tracks.isEmpty {
-                playlist.tracks = tracks
-                playlist.trackCount = tracks.count
+                enriched.tracks = tracks
+                enriched.trackCount = tracks.count
             }
         }
-        playlist.trackCount = playlist.tracks.count
-        return playlist
+        enriched.trackCount = enriched.tracks.count
+        return enriched
     }
 
     func enrichArtwork(for tracks: [Track], fallbackAlbum: Album?, limit: Int) async -> [Track] {

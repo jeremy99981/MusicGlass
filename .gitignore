@@ -86,6 +86,14 @@ iOSInjectionProject/
 # OS X
 .DS_Store
 
+# Android / Gradle
+.gradle/
+**/.gradle/
+local.properties
+**/local.properties
+.idea/
+**/.idea/
+
 # Temporary files
 *.swp
 *~.nib

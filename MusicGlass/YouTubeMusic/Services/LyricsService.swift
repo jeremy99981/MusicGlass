@@ -39,7 +39,25 @@ struct LRCLibLyricsService: LyricsServiceProtocol {
             guard !plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return Lyrics(trackId: track.id, plainText: plain, syncedLines: synced, provider: "LRCLib", language: response.lang)
         } catch {
-            return nil
+            // Fallback to /api/search
+            var searchComponents = URLComponents(string: "https://lrclib.net/api/search")!
+            let artist = track.artists.first?.name ?? track.artistLine
+            let query = "\(track.title) \(artist)".trimmingCharacters(in: .whitespaces)
+            searchComponents.queryItems = [URLQueryItem(name: "q", value: query)]
+            guard let searchUrl = searchComponents.url else { return nil }
+            var searchRequest = URLRequest(url: searchUrl)
+            searchRequest.setValue("MusicGlass/1.0 (third-party music client)", forHTTPHeaderField: "User-Agent")
+            
+            do {
+                let responses = try await httpClient.decoded([LRCLibResponse].self, for: searchRequest, decoder: JSONDecoder())
+                guard let firstMatch = responses.first else { return nil }
+                let synced = parseSyncedLyrics(firstMatch.syncedLyrics)
+                let plain = firstMatch.plainLyrics ?? synced.map(\.text).joined(separator: "\n")
+                guard !plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                return Lyrics(trackId: track.id, plainText: plain, syncedLines: synced, provider: "LRCLib", language: firstMatch.lang)
+            } catch {
+                return nil
+            }
         }
     }
 

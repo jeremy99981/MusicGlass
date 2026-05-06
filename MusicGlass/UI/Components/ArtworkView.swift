@@ -61,7 +61,23 @@ private final class ArtworkImageLoader: ObservableObject {
     @Published private(set) var image: UIImage?
     @Published private(set) var didFail = false
 
-    private static let cache = NSCache<NSURL, UIImage>()
+    private static let cache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 200
+        cache.totalCostLimit = 128 * 1024 * 1024 // 128 MB
+        return cache
+    }()
+
+    private static let urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.urlCache = URLCache(
+            memoryCapacity: 128 * 1024 * 1024,  // 128 MB memory
+            diskCapacity: 512 * 1024 * 1024       // 512 MB disk
+        )
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        return URLSession(configuration: config)
+    }()
+
     private var currentURL: URL?
 
     func load(from url: URL?) async {
@@ -80,7 +96,7 @@ private final class ArtworkImageLoader: ObservableObject {
             let rawImage = try await loadBestImage(from: ArtworkURLResolver.candidates(for: url))
             guard currentURL == url else { return }
             let processed = rawImage.musicGlassArtworkCrop(for: url)
-            Self.cache.setObject(processed, forKey: cacheKey as NSURL)
+            Self.cache.setObject(processed, forKey: cacheKey as NSURL, cost: processed.jpegData(compressionQuality: 0.5)?.count ?? 0)
             image = processed
         } catch {
             guard currentURL == url else { return }
@@ -95,7 +111,7 @@ private final class ArtworkImageLoader: ObservableObject {
 
         for candidate in urls {
             do {
-                let (data, response) = try await URLSession.shared.data(from: candidate)
+                let (data, response) = try await Self.urlSession.data(from: candidate)
                 if let httpResponse = response as? HTTPURLResponse,
                    !(200 ... 299).contains(httpResponse.statusCode) {
                     continue

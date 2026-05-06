@@ -4,9 +4,11 @@ struct HomeScreen: View {
     @EnvironmentObject private var container: AppContainer
     @EnvironmentObject private var player: AVPlayerEngine
     @StateObject var viewModel: HomeViewModel
+    var playerDestination: Binding<MusicDestination?> = .constant(nil)
+    @State private var navigationPath: [MusicDestination] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ZStack {
                 background
                 ScrollView {
@@ -29,6 +31,11 @@ struct HomeScreen: View {
             }
             .navigationDestination(for: MusicDestination.self) { destination in
                 destinationView(destination)
+            }
+            .onChange(of: playerDestination.wrappedValue) { _, destination in
+                guard let destination else { return }
+                navigationPath.append(destination)
+                playerDestination.wrappedValue = nil
             }
         }
     }

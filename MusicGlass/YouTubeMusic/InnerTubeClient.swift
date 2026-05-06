@@ -42,14 +42,14 @@ actor InnerTubeClient {
         return try await post(endpoint: "search", body: body, client: .webRemix)
     }
 
-    func browse(browseId: String? = nil, params: String? = nil, continuation: String? = nil) async throws -> JSONValue {
+    func browse(browseId: String? = nil, params: String? = nil, continuation: String? = nil, useAuth: Bool = false) async throws -> JSONValue {
         let body = InnerTubeRequestBody(
-            context: await getContext(for: .webRemix),
+            context: await getContext(for: .webRemix, includeLogin: useAuth),
             params: params,
             continuation: continuation,
             browseId: browseId
         )
-        return try await post(endpoint: "browse", body: body, client: .webRemix)
+        return try await post(endpoint: "browse", body: body, client: .webRemix, useAuth: useAuth)
     }
 
     func player(videoId: String) async throws -> JSONValue {

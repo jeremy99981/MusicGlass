@@ -5,9 +5,11 @@ struct SearchScreen: View {
     @EnvironmentObject private var player: AVPlayerEngine
     @StateObject var viewModel: SearchViewModel
     @State private var favoriteIds = Set<String>()
+    var playerDestination: Binding<MusicDestination?> = .constant(nil)
+    @State private var navigationPath: [MusicDestination] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
@@ -16,7 +18,6 @@ struct SearchScreen: View {
                         suggestions
                         content
                     }
-                    .padding(.horizontal, AppSpacing.medium)
                     .padding(.bottom, 140)
                 }
             }
@@ -34,6 +35,11 @@ struct SearchScreen: View {
                 case .playlist(let browseId):
                     PlaylistDetailScreen(viewModel: PlaylistDetailViewModel(client: container.youTubeMusicClient, browseId: browseId))
                 }
+            }
+            .onChange(of: playerDestination.wrappedValue) { _, destination in
+                guard let destination else { return }
+                navigationPath.append(destination)
+                playerDestination.wrappedValue = nil
             }
         }
     }
@@ -56,6 +62,7 @@ struct SearchScreen: View {
                     .buttonStyle(.plain)
                 }
             }
+            .padding(.horizontal, AppSpacing.medium)
             .padding(.vertical, AppSpacing.small)
         }
         .scrollIndicators(.hidden)
@@ -80,6 +87,7 @@ struct SearchScreen: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, AppSpacing.medium)
             }
             .scrollIndicators(.hidden)
         }
@@ -89,12 +97,16 @@ struct SearchScreen: View {
     private var content: some View {
         if viewModel.query.isEmpty {
             EmptyStateView(systemImage: AppIcons.search, title: "Trouver votre musique", message: "Recherchez des morceaux, albums, artistes, playlists et vidéos.")
+                .padding(.horizontal, AppSpacing.medium)
         } else if viewModel.isLoading && viewModel.result.isEmpty {
             LoadingSkeleton()
+                .padding(.horizontal, AppSpacing.medium)
         } else if let error = viewModel.errorMessage {
             ErrorStateView(message: error) { viewModel.queryChanged() }
+                .padding(.horizontal, AppSpacing.medium)
         } else if viewModel.result.isEmpty {
             EmptyStateView(systemImage: "music.note.list", title: "Aucun résultat", message: "Essayez une autre recherche.")
+                .padding(.horizontal, AppSpacing.medium)
         } else {
             resultSections
         }
@@ -102,24 +114,24 @@ struct SearchScreen: View {
 
     private var resultSections: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
+            if !viewModel.result.artists.isEmpty {
+                MediaHorizontalSection(title: "Artistes") {
+                    ForEach(viewModel.result.artists) { artist in
+                        NavigationLink(value: MusicDestination.artist(artist.browseId ?? artist.id)) {
+                            ArtistCard(artist: artist)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
             if !viewModel.result.tracks.isEmpty {
-                TrackSection(title: "Morceaux", tracks: viewModel.result.tracks, favoriteIds: favoriteIds, onPlay: play, onRadio: startRadio, onFavorite: toggleFavorite)
+                TrackSection(title: viewModel.result.artists.isEmpty ? "Morceaux" : "Meilleurs titres", tracks: viewModel.result.tracks, favoriteIds: favoriteIds, onPlay: play, onRadio: startRadio, onFavorite: toggleFavorite)
             }
             if !viewModel.result.albums.isEmpty {
                 MediaHorizontalSection(title: "Albums") {
                     ForEach(viewModel.result.albums) { album in
                         NavigationLink(value: MusicDestination.album(album.browseId ?? album.id)) {
                             AlbumCard(album: album)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            if !viewModel.result.artists.isEmpty {
-                MediaHorizontalSection(title: "Artistes") {
-                    ForEach(viewModel.result.artists) { artist in
-                        NavigationLink(value: MusicDestination.artist(artist.browseId ?? artist.id)) {
-                            ArtistCard(artist: artist)
                         }
                         .buttonStyle(.plain)
                     }
@@ -182,6 +194,7 @@ struct TrackSection: View {
         VStack(alignment: .leading, spacing: AppSpacing.small) {
             Text(title)
                 .font(AppTypography.sectionTitle)
+                .padding(.horizontal, AppSpacing.medium)
             VStack(spacing: AppSpacing.small) {
                 ForEach(tracks) { track in
                     TrackRow(track: track, isFavorite: favoriteIds.contains(track.id)) {
@@ -193,6 +206,7 @@ struct TrackSection: View {
                     }
                 }
             }
+            .padding(.horizontal, AppSpacing.medium)
         }
     }
 }
@@ -205,10 +219,12 @@ struct MediaHorizontalSection<Content: View>: View {
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
             Text(title)
                 .font(AppTypography.sectionTitle)
+                .padding(.horizontal, AppSpacing.medium)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: AppSpacing.medium) {
                     content
                 }
+                .padding(.horizontal, AppSpacing.medium)
             }
             .scrollIndicators(.hidden)
         }
