@@ -13,8 +13,8 @@ android {
         applicationId = "com.musicglass.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.0.2"
+        versionCode = 3
+        versionName = "0.0.3"
 
         buildConfigField("String", "GITHUB_REPO", "\"jeremy99981/MusicGlass\"")
     }
@@ -56,6 +56,8 @@ dependencies {
     // ExoPlayer for Audio Playback
     implementation("androidx.media3:media3-exoplayer:1.2.0")
     implementation("androidx.media3:media3-session:1.2.0")
+    implementation("androidx.media3:media3-datasource:1.2.0")
+    implementation("androidx.media3:media3-database:1.2.0")
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")

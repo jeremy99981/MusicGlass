@@ -206,14 +206,14 @@ private fun FullPlayerScreen(
         val artworkSpacer = if (isVeryCompact) 10.dp else if (isCompact) 14.dp else 22.dp
         val sliderSpacer = if (isVeryCompact) 6.dp else 12.dp
         val controlsTopSpacer = if (isVeryCompact) 8.dp else if (isCompact) 14.dp else 0.dp
-        val controlsBottomSpacer = if (isVeryCompact) 10.dp else if (isCompact) 16.dp else 28.dp
-        val bottomActionsSpacer = if (isVeryCompact) 8.dp else 18.dp
-        val playButtonSize = if (isVeryCompact) 72.dp else if (isCompact) 84.dp else 96.dp
-        val playIconSize = if (isVeryCompact) 42.dp else if (isCompact) 48.dp else 52.dp
-        val transportButtonSize = if (isVeryCompact) 56.dp else if (isCompact) 64.dp else 72.dp
-        val transportIconSize = if (isVeryCompact) 30.dp else 36.dp
-        val utilityButtonSize = if (isVeryCompact) 40.dp else 48.dp
-        val circleButtonSize = if (isVeryCompact) 40.dp else 44.dp
+        val controlsBottomSpacer = if (isVeryCompact) 8.dp else if (isCompact) 14.dp else 28.dp
+        val bottomActionsSpacer = if (isVeryCompact) 8.dp else 16.dp
+        val playButtonSize = if (isVeryCompact) 84.dp else if (isCompact) 90.dp else 96.dp
+        val playIconSize = if (isVeryCompact) 46.dp else if (isCompact) 50.dp else 52.dp
+        val transportButtonSize = if (isVeryCompact) 64.dp else if (isCompact) 68.dp else 72.dp
+        val transportIconSize = if (isVeryCompact) 34.dp else 36.dp
+        val utilityButtonSize = 48.dp
+        val circleButtonSize = 54.dp
         val showVolumeControls = !isVeryCompact
         val artworkSize = minOf(
             maxWidth - (horizontalPadding * 2f),

@@ -30,8 +30,10 @@ class InnerTubeClient {
     // WEB_REMIX client — used for browse, search, home
     private val webRemixClient = OkHttpClient.Builder()
         .connectionPool(sharedConnectionPool)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .addInterceptor { chain ->
             val original = chain.request()
             val requestBuilder = original.newBuilder()
@@ -50,8 +52,10 @@ class InnerTubeClient {
     // ANDROID_VR client — used for player (returns direct audio URLs, no signature cipher)
     private val playerClient = OkHttpClient.Builder()
         .connectionPool(sharedConnectionPool)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .addInterceptor { chain ->
             val original = chain.request()
             val requestBuilder = original.newBuilder()
@@ -67,8 +71,10 @@ class InnerTubeClient {
     // TV_EMBEDDED client — fallback for content requiring login
     private val tvClient = OkHttpClient.Builder()
         .connectionPool(sharedConnectionPool)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .addInterceptor { chain ->
             val original = chain.request()
             val requestBuilder = original.newBuilder()

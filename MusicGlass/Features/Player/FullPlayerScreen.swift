@@ -4,6 +4,7 @@ import UIKit
 struct FullPlayerScreen: View {
     @EnvironmentObject private var player: AVPlayerEngine
     @GestureState private var dragOffset: CGFloat = 0
+    @State private var artworkDismissOffset: CGFloat = 0
 
     var namespace: Namespace.ID
     var dismiss: () -> Void
@@ -35,7 +36,19 @@ struct FullPlayerScreen: View {
                         identity: player.currentTrack?.id,
                         previousRestartsCurrentTrack: player.progress > 5,
                         onPrevious: { player.previous() },
-                        onNext: { player.next() }
+                        onNext: { player.next() },
+                        onVerticalDragChanged: { offset in
+                            artworkDismissOffset = offset
+                        },
+                        onVerticalDragEnded: { shouldDismiss in
+                            if shouldDismiss {
+                                dismiss()
+                            } else {
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+                                    artworkDismissOffset = 0
+                                }
+                            }
+                        }
                     )
                         .padding(.top, isCompact ? 6 : 12)
 
@@ -71,7 +84,7 @@ struct FullPlayerScreen: View {
             .frame(width: size.width, height: size.height, alignment: .top)
             .clipped()
             .ignoresSafeArea()
-            .offset(y: max(dragOffset, 0))
+            .offset(y: max(dragOffset, artworkDismissOffset, 0))
             .gesture(
                 DragGesture(minimumDistance: 20)
                     .updating($dragOffset) { value, state, _ in
@@ -80,6 +93,8 @@ struct FullPlayerScreen: View {
                     .onEnded { value in
                         if value.translation.height > 110 || value.predictedEndTranslation.height > 190 {
                             dismiss()
+                        } else {
+                            artworkDismissOffset = 0
                         }
                     }
             )
@@ -573,6 +588,8 @@ private struct SwipeablePlayerArtworkView: View {
     var previousRestartsCurrentTrack: Bool
     var onPrevious: () -> Void
     var onNext: () -> Void
+    var onVerticalDragChanged: (CGFloat) -> Void
+    var onVerticalDragEnded: (Bool) -> Void
 
     @State private var axisLock: ArtworkSwipeAxis?
     @State private var offsetX: CGFloat = 0
@@ -623,6 +640,12 @@ private struct SwipeablePlayerArtworkView: View {
                 guard !isCommitting else { return }
                 defer { axisLock = nil }
                 guard axisLock == .horizontal else {
+                    if axisLock == .vertical,
+                       value.translation.height > 110 || value.predictedEndTranslation.height > 190 {
+                        onVerticalDragEnded(true)
+                    } else if axisLock == .vertical {
+                        onVerticalDragEnded(false)
+                    }
                     resetArtwork()
                     return
                 }
@@ -648,6 +671,11 @@ private struct SwipeablePlayerArtworkView: View {
     }
 
     private func updateDragLock(for translation: CGSize) {
+        if axisLock == .vertical {
+            onVerticalDragChanged(max(translation.height, 0))
+            return
+        }
+
         guard axisLock == nil else { return }
         let absX = abs(translation.width)
         let absY = abs(translation.height)
@@ -657,6 +685,7 @@ private struct SwipeablePlayerArtworkView: View {
             axisLock = .horizontal
         } else if absY > absX * 1.1 {
             axisLock = .vertical
+            onVerticalDragChanged(max(translation.height, 0))
         }
     }
 

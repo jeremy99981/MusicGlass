@@ -1,8 +1,13 @@
 package com.musicglass.app
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -26,6 +31,7 @@ class MainActivity : ComponentActivity() {
         AppSettingsRepository.init(applicationContext)
         PlaybackHistoryRepository.init(applicationContext)
         UpdateRepository.init(applicationContext)
+        requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
         setContent {
             val settings by AppSettingsRepository.state.collectAsState()
@@ -46,5 +52,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2002)
     }
 }
