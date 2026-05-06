@@ -45,34 +45,38 @@ struct RootView: View {
         #endif
     }
 
+    @ViewBuilder
     private var tabRoot: some View {
-        ZStack(alignment: .bottom) {
-            if let homeViewModel, let searchViewModel, let libraryViewModel {
-                TabView(selection: $selectedTab) {
-                    HomeScreen(
-                        viewModel: homeViewModel,
-                        playerDestination: selectedTab == .home ? $playerNavigationDestination : .constant(nil)
-                    )
-                        .tabItem { Label("Accueil", systemImage: "house.fill") }
-                        .tag(AppTab.home)
+        if #available(iOS 26.0, *) {
+            nativeLiquidGlassTabRoot
+        } else {
+            legacyTabRoot
+        }
+    }
 
-                    SearchScreen(
-                        viewModel: searchViewModel,
-                        playerDestination: selectedTab == .search ? $playerNavigationDestination : .constant(nil)
-                    )
-                        .tabItem { Label("Recherche", systemImage: "magnifyingglass") }
-                        .tag(AppTab.search)
-
-                    LibraryScreen(
-                        viewModel: libraryViewModel,
-                        playerDestination: selectedTab == .library ? $playerNavigationDestination : .constant(nil)
-                    )
-                    .tabItem { Label("Bibliothèque", systemImage: "square.stack.fill") }
-                    .tag(AppTab.library)
+    @available(iOS 26.0, *)
+    private var nativeLiquidGlassTabRoot: some View {
+        tabContent
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .tabViewBottomAccessory {
+                if player.currentTrack != nil {
+                    TabBarMiniPlayerAccessory(namespace: playerNamespace) {
+                        activePlayerSheet = .fullPlayer
+                    }
                 }
-            } else {
-                ProgressView()
             }
+            .animation(.spring(response: 0.45, dampingFraction: 0.86), value: player.currentTrack?.id)
+            .fullScreenCover(isPresented: isFullPlayerPresented) {
+                fullPlayerCover
+            }
+            .sheet(item: secondaryPlayerSheet) { sheet in
+                secondarySheetView(sheet)
+            }
+    }
+
+    private var legacyTabRoot: some View {
+        ZStack(alignment: .bottom) {
+            tabContent
 
             if player.currentTrack != nil {
                 MiniPlayer(namespace: playerNamespace) {
@@ -85,29 +89,69 @@ struct RootView: View {
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.86), value: player.currentTrack?.id)
         .fullScreenCover(isPresented: isFullPlayerPresented) {
-            FullPlayerScreen(namespace: playerNamespace) {
-                activePlayerSheet = nil
-            } showQueue: {
-                activePlayerSheet = .queue
-            } showLyrics: { track in
-                activePlayerSheet = .lyrics(track)
-            } openArtist: { artist in
-                openArtistFromPlayer(artist)
-            }
+            fullPlayerCover
         }
         .sheet(item: secondaryPlayerSheet) { sheet in
-            switch sheet {
-            case .queue:
-                QueueScreen()
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            case .lyrics(let track):
-                LyricsScreen(viewModel: LyricsViewModel(client: container.youTubeMusicClient, track: track))
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            case .fullPlayer:
-                EmptyView()
+            secondarySheetView(sheet)
+        }
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        if let homeViewModel, let searchViewModel, let libraryViewModel {
+            TabView(selection: $selectedTab) {
+                HomeScreen(
+                    viewModel: homeViewModel,
+                    playerDestination: selectedTab == .home ? $playerNavigationDestination : .constant(nil)
+                )
+                    .tabItem { Label("Accueil", systemImage: "house.fill") }
+                    .tag(AppTab.home)
+
+                SearchScreen(
+                    viewModel: searchViewModel,
+                    playerDestination: selectedTab == .search ? $playerNavigationDestination : .constant(nil)
+                )
+                    .tabItem { Label("Recherche", systemImage: "magnifyingglass") }
+                    .tag(AppTab.search)
+
+                LibraryScreen(
+                    viewModel: libraryViewModel,
+                    playerDestination: selectedTab == .library ? $playerNavigationDestination : .constant(nil)
+                )
+                .tabItem { Label("Bibliothèque", systemImage: "square.stack.fill") }
+                .tag(AppTab.library)
             }
+        } else {
+            ProgressView()
+        }
+    }
+
+    @ViewBuilder
+    private var fullPlayerCover: some View {
+        FullPlayerScreen(namespace: playerNamespace) {
+            activePlayerSheet = nil
+        } showQueue: {
+            activePlayerSheet = .queue
+        } showLyrics: { track in
+            activePlayerSheet = .lyrics(track)
+        } openArtist: { artist in
+            openArtistFromPlayer(artist)
+        }
+    }
+
+    @ViewBuilder
+    private func secondarySheetView(_ sheet: PlayerSheet) -> some View {
+        switch sheet {
+        case .queue:
+            QueueScreen()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        case .lyrics(let track):
+            LyricsScreen(viewModel: LyricsViewModel(client: container.youTubeMusicClient, track: track))
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        case .fullPlayer:
+            EmptyView()
         }
     }
 

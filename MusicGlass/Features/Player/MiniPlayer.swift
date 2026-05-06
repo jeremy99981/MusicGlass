@@ -1,25 +1,56 @@
 import SwiftUI
 
 struct MiniPlayer: View {
-    @EnvironmentObject private var player: AVPlayerEngine
     var namespace: Namespace.ID
     var openFullPlayer: () -> Void
 
     var body: some View {
-        HStack(spacing: AppSpacing.medium) {
+        MiniPlayerBody(namespace: namespace, layout: .expanded, openFullPlayer: openFullPlayer)
+    }
+}
+
+@available(iOS 26.0, *)
+struct TabBarMiniPlayerAccessory: View {
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+    var namespace: Namespace.ID
+    var openFullPlayer: () -> Void
+
+    var body: some View {
+        MiniPlayerBody(
+            namespace: namespace,
+            layout: placement == .inline ? .inline : .expanded,
+            openFullPlayer: openFullPlayer
+        )
+    }
+}
+
+private struct MiniPlayerBody: View {
+    @EnvironmentObject private var player: AVPlayerEngine
+    var namespace: Namespace.ID
+    var layout: MiniPlayerLayout
+    var openFullPlayer: () -> Void
+
+    var body: some View {
+        HStack(spacing: layout.spacing) {
             Button(action: openFullPlayer) {
-                HStack(spacing: AppSpacing.medium) {
-                    ArtworkView(url: player.currentTrack?.bestThumbnailURL, size: 42, cornerRadius: AppRadius.small)
-                        .matchedGeometryEffect(id: "player-artwork", in: namespace)
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: layout.contentSpacing) {
+                    ArtworkView(
+                        url: player.currentTrack?.bestThumbnailURL,
+                        size: layout.artworkSize,
+                        cornerRadius: layout.artworkCornerRadius
+                    )
+                    .matchedGeometryEffect(id: "player-artwork", in: namespace)
+
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(player.currentTrack?.title ?? "Aucun titre")
-                            .font(.subheadline.weight(.semibold))
+                            .font(layout.titleFont)
                             .lineLimit(1)
                         Text(subtitle)
-                            .font(.caption)
+                            .font(layout.subtitleFont)
                             .foregroundStyle(player.errorMessage == nil ? Color.secondary : Color.red)
                             .lineLimit(1)
                     }
+
                     Spacer(minLength: AppSpacing.small)
                 }
                 .contentShape(Rectangle())
@@ -30,16 +61,16 @@ struct MiniPlayer: View {
                 player.togglePlayPause()
             } label: {
                 Image(systemName: showsPauseIcon ? AppIcons.pause : AppIcons.play)
-                    .font(.headline)
-                    .frame(width: 44, height: 44)
+                    .font(layout.controlFont)
+                    .frame(width: layout.controlSize, height: layout.controlSize)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(showsPauseIcon ? "Pause" : "Lecture")
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 6)
-        .padding(.vertical, 7)
-        .appGlass(tint: AppColors.accent.opacity(0.10), in: Capsule(), interactive: true)
+        .padding(.leading, layout.leadingPadding)
+        .padding(.trailing, layout.trailingPadding)
+        .padding(.vertical, layout.verticalPadding)
+        .appGlass(tint: AppColors.accent.opacity(layout.glassTintOpacity), in: Capsule(), interactive: true)
         .contentShape(Capsule())
         .gesture(
             DragGesture(minimumDistance: 25)
@@ -51,6 +82,7 @@ struct MiniPlayer: View {
                     }
                 }
         )
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: layout)
     }
 
     private var subtitle: String {
@@ -66,6 +98,95 @@ struct MiniPlayer: View {
             return true
         case .idle, .loading, .paused, .failed:
             return false
+        }
+    }
+}
+
+private enum MiniPlayerLayout: Hashable {
+    case expanded
+    case inline
+
+    var artworkSize: CGFloat {
+        switch self {
+        case .expanded: 42
+        case .inline: 34
+        }
+    }
+
+    var artworkCornerRadius: CGFloat {
+        switch self {
+        case .expanded: AppRadius.small
+        case .inline: 7
+        }
+    }
+
+    var spacing: CGFloat {
+        switch self {
+        case .expanded: AppSpacing.medium
+        case .inline: AppSpacing.small
+        }
+    }
+
+    var contentSpacing: CGFloat {
+        switch self {
+        case .expanded: AppSpacing.medium
+        case .inline: AppSpacing.small
+        }
+    }
+
+    var controlSize: CGFloat {
+        switch self {
+        case .expanded: 44
+        case .inline: 34
+        }
+    }
+
+    var leadingPadding: CGFloat {
+        switch self {
+        case .expanded: 8
+        case .inline: 6
+        }
+    }
+
+    var trailingPadding: CGFloat {
+        switch self {
+        case .expanded: 6
+        case .inline: 4
+        }
+    }
+
+    var verticalPadding: CGFloat {
+        switch self {
+        case .expanded: 7
+        case .inline: 5
+        }
+    }
+
+    var glassTintOpacity: Double {
+        switch self {
+        case .expanded: 0.10
+        case .inline: 0.08
+        }
+    }
+
+    var titleFont: Font {
+        switch self {
+        case .expanded: .subheadline.weight(.semibold)
+        case .inline: .caption.weight(.semibold)
+        }
+    }
+
+    var subtitleFont: Font {
+        switch self {
+        case .expanded: .caption
+        case .inline: .caption2
+        }
+    }
+
+    var controlFont: Font {
+        switch self {
+        case .expanded: .headline
+        case .inline: .subheadline.weight(.semibold)
         }
     }
 }
