@@ -157,6 +157,7 @@ private extension View {
 }
 
 private struct HomeScrollChrome: View {
+    @Environment(\.colorScheme) private var colorScheme
     var title: String
     var isVisible: Bool
 
@@ -166,8 +167,7 @@ private struct HomeScrollChrome: View {
             let height = safeTop + 48
 
             VStack(spacing: 0) {
-                Color.black
-                    .overlay(.ultraThinMaterial.opacity(0.18))
+                chromeBackground
                     .overlay(alignment: .bottom) {
                         Text(title)
                             .font(.headline.weight(.semibold))
@@ -183,6 +183,17 @@ private struct HomeScrollChrome: View {
             }
         }
         .zIndex(20)
+    }
+
+    @ViewBuilder
+    private var chromeBackground: some View {
+        if colorScheme == .dark {
+            Color.black.opacity(0.86)
+                .overlay(.ultraThinMaterial.opacity(0.18))
+        } else {
+            Color(.systemBackground).opacity(0.94)
+                .overlay(.regularMaterial.opacity(0.28))
+        }
     }
 }
 

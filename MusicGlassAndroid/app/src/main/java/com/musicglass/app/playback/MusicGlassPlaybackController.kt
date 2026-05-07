@@ -594,6 +594,21 @@ class MusicGlassPlaybackController private constructor(context: Context) {
 
     fun playRadio(item: SongItem) {
         val cleanedItem = item.cleanedMusicGlassMetadata()
+        val currentItem = _currentSongInfo.value?.cleanedMusicGlassMetadata()
+        if (currentItem != null && currentItem.isSameQueueItemAs(cleanedItem)) {
+            val currentQueue = _queue.value
+            val currentIndex = _currentQueueIndex.value
+            if (currentIndex == null || currentQueue.getOrNull(currentIndex)?.isSameQueueItemAs(currentItem) != true) {
+                _queue.value = listOf(currentItem)
+                _currentQueueIndex.value = 0
+            }
+            _currentSongInfo.value = currentItem
+            updateQueueCapabilities()
+            scheduleRelatedQueue(currentItem, forceRadio = true, replaceUpcoming = true)
+            Log.d(TAG, "Refreshing radio queue without restarting ${currentItem.title} (${currentItem.id})")
+            return
+        }
+
         _queue.value = listOf(cleanedItem)
         _currentQueueIndex.value = 0
         _currentSongInfo.value = cleanedItem
@@ -601,7 +616,7 @@ class MusicGlassPlaybackController private constructor(context: Context) {
 
         val artist = cleanedItem.artists.firstOrNull()?.name
         playVideo(cleanedItem.id, songTitle = cleanedItem.title, songArtist = artist)
-        scheduleRelatedQueue(cleanedItem, forceRadio = true)
+        scheduleRelatedQueue(cleanedItem, forceRadio = true, replaceUpcoming = true)
     }
 
     private fun handleTrackEnded() {

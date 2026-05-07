@@ -3,8 +3,9 @@ import UIKit
 
 struct FullPlayerScreen: View {
     @EnvironmentObject private var player: AVPlayerEngine
-    @GestureState private var dragOffset: CGFloat = 0
-    @State private var artworkDismissOffset: CGFloat = 0
+    @State private var dismissDragOffset: CGFloat = 0
+    @State private var dismissAxis: ArtworkSwipeAxis?
+    @State private var isDismissing = false
 
     var namespace: Namespace.ID
     var dismiss: () -> Void
@@ -32,23 +33,13 @@ struct FullPlayerScreen: View {
 
                     SwipeablePlayerArtworkView(
                         url: player.currentTrack?.bestThumbnailURL,
+                        previousURL: previousSwipeArtworkURL,
+                        nextURL: nextSwipeArtworkURL,
                         size: artworkSize,
                         identity: player.currentTrack?.id,
                         previousRestartsCurrentTrack: player.progress > 5,
                         onPrevious: { player.previous() },
-                        onNext: { player.next() },
-                        onVerticalDragChanged: { offset in
-                            artworkDismissOffset = offset
-                        },
-                        onVerticalDragEnded: { shouldDismiss in
-                            if shouldDismiss {
-                                dismiss()
-                            } else {
-                                withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
-                                    artworkDismissOffset = 0
-                                }
-                            }
-                        }
+                        onNext: { player.next() }
                     )
                         .padding(.top, isCompact ? 6 : 12)
 
@@ -84,24 +75,90 @@ struct FullPlayerScreen: View {
             .frame(width: size.width, height: size.height, alignment: .top)
             .clipped()
             .ignoresSafeArea()
-            .offset(y: max(dragOffset, artworkDismissOffset, 0))
-            .gesture(
-                DragGesture(minimumDistance: 20)
-                    .updating($dragOffset) { value, state, _ in
-                        state = max(value.translation.height, 0)
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 110 || value.predictedEndTranslation.height > 190 {
-                            dismiss()
-                        } else {
-                            artworkDismissOffset = 0
-                        }
-                    }
-            )
+            .offset(y: max(dismissDragOffset, 0))
+            .simultaneousGesture(dismissDragGesture(screenHeight: size.height), including: .all)
         }
         .ignoresSafeArea()
-        .background(Color(red: 0.07, green: 0.12, blue: 0.12).ignoresSafeArea())
+        .presentationBackground(.clear)
+        .background(ClearFullScreenCoverBackground())
         .environment(\.colorScheme, .dark)
+    }
+
+    private func dismissDragGesture(screenHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { value in
+                guard !isDismissing else { return }
+                let translation = value.translation
+                updateDismissAxis(for: translation)
+
+                guard dismissAxis == .vertical, translation.height > 0 else {
+                    if dismissAxis == .horizontal, dismissDragOffset != 0 {
+                        setDismissOffset(0)
+                    }
+                    return
+                }
+
+                setDismissOffset(translation.height)
+            }
+            .onEnded { value in
+                guard !isDismissing else { return }
+                let translation = value.translation
+                let predicted = value.predictedEndTranslation
+                let isVerticalDismiss = dismissAxis == .vertical ||
+                    (translation.height > 0 && abs(translation.height) > abs(translation.width) * 0.72)
+                dismissAxis = nil
+                guard isVerticalDismiss else {
+                    settleDismissOffsetBackToTop()
+                    return
+                }
+
+                if translation.height > 110 || predicted.height > 190 {
+                    finishDismiss(from: max(translation.height, dismissDragOffset), screenHeight: screenHeight)
+                } else {
+                    settleDismissOffsetBackToTop()
+                }
+            }
+    }
+
+    private func updateDismissAxis(for translation: CGSize) {
+        guard dismissAxis == nil else { return }
+        let absX = abs(translation.width)
+        let absY = abs(translation.height)
+        guard absX > 8 || absY > 8 else { return }
+
+        if absX > absY * 1.25 {
+            dismissAxis = .horizontal
+        } else if translation.height > 0, absY > absX * 0.72 {
+            dismissAxis = .vertical
+        }
+    }
+
+    private func setDismissOffset(_ offset: CGFloat) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            dismissDragOffset = max(offset, 0)
+        }
+    }
+
+    private func settleDismissOffsetBackToTop() {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            dismissDragOffset = 0
+        }
+    }
+
+    private func finishDismiss(from currentOffset: CGFloat, screenHeight: CGFloat) {
+        let targetOffset = screenHeight + 80
+        setDismissOffset(currentOffset)
+        isDismissing = true
+
+        withAnimation(.easeOut(duration: 0.22)) {
+            dismissDragOffset = targetOffset
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            dismiss()
+        }
     }
 
     private func playerBackground(size: CGSize) -> some View {
@@ -322,6 +379,41 @@ struct FullPlayerScreen: View {
 
     private var displayedDuration: TimeInterval {
         max(player.duration ?? player.currentTrack?.duration ?? 0, 0)
+    }
+
+    private var previousSwipeArtworkURL: URL? {
+        guard player.progress <= 5,
+              let currentIndex = player.queue.currentIndex,
+              !player.queue.tracks.isEmpty
+        else { return nil }
+
+        let previousIndex = currentIndex - 1
+        if player.queue.tracks.indices.contains(previousIndex) {
+            return player.queue.tracks[previousIndex].bestThumbnailURL
+        }
+
+        if player.queue.repeatMode == .all, let last = player.queue.tracks.last {
+            return last.bestThumbnailURL
+        }
+
+        return nil
+    }
+
+    private var nextSwipeArtworkURL: URL? {
+        guard let currentIndex = player.queue.currentIndex,
+              !player.queue.tracks.isEmpty
+        else { return nil }
+
+        let nextIndex = currentIndex + 1
+        if player.queue.tracks.indices.contains(nextIndex) {
+            return player.queue.tracks[nextIndex].bestThumbnailURL
+        }
+
+        if player.queue.repeatMode == .all, let first = player.queue.tracks.first {
+            return first.bestThumbnailURL
+        }
+
+        return nil
     }
 
     private var clampedProgress: TimeInterval {
@@ -583,13 +675,13 @@ private extension View {
 
 private struct SwipeablePlayerArtworkView: View {
     var url: URL?
+    var previousURL: URL?
+    var nextURL: URL?
     var size: CGFloat
     var identity: String?
     var previousRestartsCurrentTrack: Bool
     var onPrevious: () -> Void
     var onNext: () -> Void
-    var onVerticalDragChanged: (CGFloat) -> Void
-    var onVerticalDragEnded: (Bool) -> Void
 
     @State private var axisLock: ArtworkSwipeAxis?
     @State private var offsetX: CGFloat = 0
@@ -598,21 +690,42 @@ private struct SwipeablePlayerArtworkView: View {
     @State private var isCommitting = false
     @State private var commitDirection: CGFloat = 0
 
+    private var pageStride: CGFloat {
+        size + 14
+    }
+
     private var artworkIdentity: String {
         identity ?? url?.absoluteString ?? "empty-artwork"
     }
 
     var body: some View {
-        PlayerArtworkView(url: url, size: size)
-            .id(artworkIdentity)
+        ZStack {
+            HStack(spacing: 14) {
+                PlayerArtworkView(url: previousURL ?? url, size: size, showsShadow: false)
+
+                PlayerArtworkView(url: url, size: size, showsShadow: false)
+                    .id(artworkIdentity)
+
+                PlayerArtworkView(url: nextURL ?? url, size: size, showsShadow: false)
+            }
+            .frame(width: (size * 3) + 28, height: size)
+            .background(Color.black.opacity(0.22))
             .offset(x: offsetX)
             .scaleEffect(visualScale)
             .opacity(visualOpacity)
+        }
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.28), radius: 34, y: 18)
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .simultaneousGesture(swipeGesture)
             .onChange(of: artworkIdentity) { _, _ in
                 guard isCommitting else { return }
-                animateIncomingArtwork()
+                finalizeCommittedArtwork()
             }
             .accessibilityAction(named: "Titre precedent") {
                 onPrevious()
@@ -628,25 +741,23 @@ private struct SwipeablePlayerArtworkView: View {
                 guard !isCommitting else { return }
                 updateDragLock(for: value.translation)
 
-                guard axisLock == .horizontal else { return }
+                guard axisLock == .horizontal else {
+                    if axisLock == .vertical {
+                        resetHorizontalStateWithoutAnimation()
+                    }
+                    return
+                }
                 let resistance: CGFloat = value.translation.width > 0 && previousRestartsCurrentTrack ? 0.42 : 1
                 let rawOffset = value.translation.width * resistance
-                offsetX = min(max(rawOffset, -(size * 0.95)), size * 0.95)
-                let progress = min(abs(offsetX) / max(size, 1), 1)
-                visualOpacity = 1 - (progress * 0.18)
-                visualScale = 1 - (progress * 0.035)
+                offsetX = min(max(rawOffset, -pageStride), pageStride)
+                let progress = min(abs(offsetX) / max(pageStride, 1), 1)
+                visualOpacity = 1 - (progress * 0.04)
+                visualScale = 1 - (progress * 0.012)
             }
             .onEnded { value in
                 guard !isCommitting else { return }
                 defer { axisLock = nil }
                 guard axisLock == .horizontal else {
-                    if axisLock == .vertical,
-                       value.translation.height > 110 || value.predictedEndTranslation.height > 190 {
-                        onVerticalDragEnded(true)
-                    } else if axisLock == .vertical {
-                        onVerticalDragEnded(false)
-                    }
-                    resetArtwork()
                     return
                 }
 
@@ -672,7 +783,6 @@ private struct SwipeablePlayerArtworkView: View {
 
     private func updateDragLock(for translation: CGSize) {
         if axisLock == .vertical {
-            onVerticalDragChanged(max(translation.height, 0))
             return
         }
 
@@ -685,7 +795,6 @@ private struct SwipeablePlayerArtworkView: View {
             axisLock = .horizontal
         } else if absY > absX * 1.1 {
             axisLock = .vertical
-            onVerticalDragChanged(max(translation.height, 0))
         }
     }
 
@@ -693,13 +802,13 @@ private struct SwipeablePlayerArtworkView: View {
         isCommitting = true
         commitDirection = direction
 
-        withAnimation(.easeOut(duration: 0.14)) {
-            offsetX = direction * size * 1.05
-            visualOpacity = 0.36
-            visualScale = 0.94
+        withAnimation(.easeOut(duration: 0.2)) {
+            offsetX = direction * pageStride
+            visualOpacity = 1
+            visualScale = 1
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             action()
         }
 
@@ -710,21 +819,11 @@ private struct SwipeablePlayerArtworkView: View {
         }
     }
 
-    private func animateIncomingArtwork() {
-        let incomingOffset = -commitDirection * size * 0.72
+    private func finalizeCommittedArtwork() {
         withoutAnimation {
-            offsetX = incomingOffset
-            visualOpacity = 0.52
-            visualScale = 0.96
-        }
-
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
             offsetX = 0
             visualOpacity = 1
             visualScale = 1
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
             isCommitting = false
             commitDirection = 0
         }
@@ -732,6 +831,15 @@ private struct SwipeablePlayerArtworkView: View {
 
     private func resetArtwork() {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+            offsetX = 0
+            visualOpacity = 1
+            visualScale = 1
+        }
+    }
+
+    private func resetHorizontalStateWithoutAnimation() {
+        guard offsetX != 0 || visualOpacity != 1 || visualScale != 1 else { return }
+        withoutAnimation {
             offsetX = 0
             visualOpacity = 1
             visualScale = 1
@@ -752,16 +860,73 @@ private enum ArtworkSwipeAxis {
     case vertical
 }
 
+private struct ClearFullScreenCoverBackground: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        clearPresentationBackground(from: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        clearPresentationBackground(from: uiView)
+    }
+
+    private func clearPresentationBackground(from view: UIView) {
+        DispatchQueue.main.async {
+            var parent: UIView? = view
+            while let current = parent {
+                current.backgroundColor = .clear
+                current.isOpaque = false
+                parent = current.superview
+            }
+            view.window?.backgroundColor = .clear
+        }
+    }
+}
+
 private struct PlayerArtworkView: View {
     var url: URL?
     var size: CGFloat
+    var showsShadow = true
 
     @StateObject private var loader = PlayerArtworkLoader()
 
     var body: some View {
+        if showsShadow {
+            artworkContent
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.white.opacity(0.16), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.28), radius: 34, y: 18)
+                .task(id: url) {
+                    await loader.load(from: url)
+                }
+                .accessibilityHidden(true)
+        } else {
+            artworkContent
+                .frame(width: size, height: size)
+                .clipped()
+                .task(id: url) {
+                    await loader.load(from: url)
+                }
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private var artworkContent: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.white.opacity(0.08))
+            if showsShadow {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.white.opacity(0.08))
+            } else {
+                Rectangle()
+                    .fill(.clear)
+            }
 
             if let image = loader.image {
                 Image(uiImage: image)
@@ -769,21 +934,17 @@ private struct PlayerArtworkView: View {
                     .interpolation(.high)
                     .antialiased(true)
                     .scaledToFill()
+                    .frame(width: size, height: size)
             } else {
-                ArtworkView(url: url, size: size, cornerRadius: 14)
+                if showsShadow {
+                    ArtworkView(url: url, size: size, cornerRadius: 14)
+                } else {
+                    Rectangle()
+                        .fill(.white.opacity(0.001))
+                        .frame(width: size, height: size)
+                }
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.white.opacity(0.16), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 34, y: 18)
-        .task(id: url) {
-            await loader.load(from: url)
-        }
-        .accessibilityHidden(true)
     }
 }
 

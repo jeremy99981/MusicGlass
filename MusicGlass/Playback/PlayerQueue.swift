@@ -80,6 +80,33 @@ struct PlayerQueue: Codable, Hashable, Sendable {
         removeCurrentTrackDuplicatesFromUpcoming()
     }
 
+    mutating func replaceUpcomingTracks(with relatedTracks: [Track], limit: Int = 24) {
+        guard let currentIndex,
+              tracks.indices.contains(currentIndex)
+        else {
+            if let firstTrack = relatedTracks.first {
+                replace(with: Array(relatedTracks.prefix(limit)), startingAt: firstTrack)
+            }
+            return
+        }
+
+        let current = tracks[currentIndex]
+        var preservedTracks = Array(tracks.prefix(currentIndex + 1))
+        var seenKeys = Set(preservedTracks.map(\.queueIdentityKey))
+        let currentKey = current.queueIdentityKey
+        let uniqueRelated = relatedTracks
+            .filter { track in
+                guard track.queueIdentityKey != currentKey else { return false }
+                return seenKeys.insert(track.queueIdentityKey).inserted
+            }
+            .prefix(limit)
+
+        preservedTracks.append(contentsOf: uniqueRelated)
+        tracks = preservedTracks
+        self.currentIndex = tracks.firstIndex(where: { $0.isSameQueueTrack(as: current) }) ?? currentIndex
+        removeCurrentTrackDuplicatesFromUpcoming()
+    }
+
     mutating func nextTrack() -> Track? {
         guard !tracks.isEmpty else { return nil }
         if currentIndex == nil {

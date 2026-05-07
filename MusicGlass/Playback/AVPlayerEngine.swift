@@ -73,9 +73,19 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
     }
 
     func playRadio(from track: Track) {
+        if let currentTrack, currentTrack.musicGlassIsSameQueueItem(as: track) {
+            relatedQueueTask?.cancel()
+            queue.replaceCurrentTrack(with: currentTrack)
+            persistQueue()
+            scheduleRelatedQueue(for: currentTrack, replaceUpcoming: true)
+            updateNowPlaying()
+            AppLogger.playback.notice("Refreshing radio queue without restarting \(currentTrack.videoId, privacy: .public)")
+            return
+        }
+
         queue.replace(with: [track], startingAt: track)
         persistQueue()
-        loadAndPlay(track)
+        loadAndPlay(track, replaceUpcomingWithRelated: true)
         AppLogger.playback.notice("Starting radio from \(track.videoId, privacy: .public)")
     }
 
@@ -195,7 +205,7 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
         persistQueue()
     }
 
-    private func loadAndPlay(_ track: Track) {
+    private func loadAndPlay(_ track: Track, replaceUpcomingWithRelated: Bool = false) {
         loadTask?.cancel()
         relatedQueueTask?.cancel()
         currentTrack = track
@@ -229,7 +239,7 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
                 state = .loading
                 try? historyRepository.add(playbackTrack)
                 persistQueue()
-                scheduleRelatedQueue(for: playbackTrack)
+                scheduleRelatedQueue(for: playbackTrack, replaceUpcoming: replaceUpcomingWithRelated)
                 updateNowPlaying()
             } catch is CancellationError {
                 AppLogger.playback.notice("Playback load cancelled")
@@ -289,7 +299,7 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
         return nil
     }
 
-    private func scheduleRelatedQueue(for track: Track) {
+    private func scheduleRelatedQueue(for track: Track, replaceUpcoming: Bool = false) {
         relatedQueueTask?.cancel()
         relatedQueueTask = Task { [weak self] in
             guard let self else { return }
@@ -297,10 +307,14 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
                 try await Task.sleep(for: .milliseconds(450))
                 let relatedTracks = await relatedTracks(for: track)
                 try Task.checkCancellation()
-                guard currentTrack?.id == track.id else { return }
-                queue.appendRelatedTracks(relatedTracks)
+                guard let currentTrack, currentTrack.musicGlassIsSameQueueItem(as: track) else { return }
+                if replaceUpcoming {
+                    queue.replaceUpcomingTracks(with: relatedTracks)
+                } else {
+                    queue.appendRelatedTracks(relatedTracks)
+                }
                 persistQueue()
-                AppLogger.playback.notice("Added \(relatedTracks.count, privacy: .public) related tracks to queue")
+                AppLogger.playback.notice("\(replaceUpcoming ? "Replaced upcoming queue with" : "Added", privacy: .public) \(relatedTracks.count, privacy: .public) related tracks")
             } catch is CancellationError {
                 AppLogger.playback.notice("Related queue generation cancelled")
             } catch {
