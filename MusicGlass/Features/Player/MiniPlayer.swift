@@ -26,6 +26,7 @@ struct TabBarMiniPlayerAccessory: View {
 
 private struct MiniPlayerBody: View {
     @EnvironmentObject private var player: AVPlayerEngine
+    @Environment(\.colorScheme) private var colorScheme
     var namespace: Namespace.ID
     var layout: MiniPlayerLayout
     var openFullPlayer: () -> Void
@@ -72,7 +73,13 @@ private struct MiniPlayerBody: View {
         .padding(.leading, layout.leadingPadding)
         .padding(.trailing, layout.trailingPadding)
         .padding(.vertical, layout.verticalPadding)
+        .background {
+            Capsule()
+                .fill(colorScheme == .light ? Color.white.opacity(0.14) : Color.clear)
+        }
         .appGlass(tint: AppColors.accent.opacity(layout.glassTintOpacity), in: Capsule(), interactive: true)
+        .id("mini-player-glass-\(colorScheme == .dark ? "dark" : "light")")
+        .environment(\.colorScheme, colorScheme)
         .contentShape(Capsule())
         .gesture(
             DragGesture(minimumDistance: 25)

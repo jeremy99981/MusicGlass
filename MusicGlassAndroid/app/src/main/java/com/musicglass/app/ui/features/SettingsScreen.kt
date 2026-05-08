@@ -135,6 +135,8 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadCacheSize()
+        // Automatically check for updates when entering settings
+        updateViewModel.checkForUpdateSilently()
     }
 
     Scaffold(
@@ -272,8 +274,9 @@ fun SettingsScreen(
                                 }
                             }
                             is UpdateCheckState.UpdateAvailable -> {
+                                val info = (updateState as UpdateCheckState.UpdateAvailable).info
                                 Button(onClick = {
-                                    updateViewModel.checkForUpdateFromSettings()
+                                    updateViewModel.showUpdateDialog()
                                 }) {
                                     Icon(
                                         Icons.Filled.SystemUpdate,
@@ -281,7 +284,7 @@ fun SettingsScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Mettre à jour")
+                                    Text("Mise à jour ${info.latestVersion}")
                                 }
                             }
                             else -> {

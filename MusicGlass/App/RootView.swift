@@ -43,6 +43,12 @@ struct RootView: View {
             activePlayerSheet = .fullPlayer
         }
         #endif
+        .onChange(of: player.shouldShowFullPlayer) { _, newValue in
+            if newValue {
+                activePlayerSheet = .fullPlayer
+                player.shouldShowFullPlayer = false
+            }
+        }
     }
 
     @ViewBuilder

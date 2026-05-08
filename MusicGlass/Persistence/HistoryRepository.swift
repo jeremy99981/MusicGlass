@@ -22,13 +22,29 @@ final class HistoryRepository {
         try trimHistory(in: context)
     }
 
-    func recentlyPlayed() throws -> [Track] {
+    func recentlyPlayed(source: String? = nil) throws -> [Track] {
         let context = database.newContext()
         var descriptor = FetchDescriptor<StoredTrackRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
         descriptor.fetchLimit = maxHistoryCount
-        return try context.fetch(descriptor)
-            .filter { $0.kind == .history }
-            .map { $0.toTrack() }
+        let results = try context.fetch(descriptor).filter { $0.kind == .history }
+        if let source = source {
+            return results.filter { $0.sourceRaw == source }.map { $0.toTrack() }
+        }
+        return results.map { $0.toTrack() }
+    }
+
+    func allHistoryRecords() throws -> [StoredTrackRecord] {
+        let context = database.newContext()
+        return try context.fetch(FetchDescriptor<StoredTrackRecord>()).filter { $0.kind == .history }
+    }
+
+    func delete(_ track: Track) throws {
+        let context = database.newContext()
+        let recordId = "\(StoredTrackKind.history.rawValue)-\(track.id)"
+        if let record = try fetchRecord(id: recordId, in: context) {
+            context.delete(record)
+            try context.save()
+        }
     }
 
     func clear() throws {

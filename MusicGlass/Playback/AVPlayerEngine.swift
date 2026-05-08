@@ -18,11 +18,13 @@ protocol PlayerEngineProtocol: AnyObject {
 final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
     @Published private(set) var state: PlayerState = .idle
     @Published private(set) var currentTrack: Track?
-    @Published private(set) var progress: TimeInterval = 0
-    @Published private(set) var duration: TimeInterval?
+    private(set) var progress: TimeInterval = 0
+    private(set) var duration: TimeInterval?
     @Published private(set) var errorMessage: String?
     @Published private(set) var outputVolume: Float = 1
     @Published var queue = PlayerQueue()
+    @Published var shouldShowFullPlayer = false
+    @Published var pendingFullPlayerPresentation = false
 
     private let player = AVPlayer()
     private let youTubeMusicClient: YouTubeMusicClientProtocol
@@ -31,6 +33,7 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
     private let remoteCommandCenterManager: RemoteCommandCenterManager
     private let audioSessionManager: AudioSessionManager
     private var timeObserver: Any?
+    private var lastSeekTime: Date = .distantPast
     private var loadTask: Task<Void, Never>?
     private var playerStatusObservation: NSKeyValueObservation?
     private var playerRateObservation: NSKeyValueObservation?
@@ -39,6 +42,7 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
     private var itemBufferEmptyObservation: NSKeyValueObservation?
     private var relatedQueueTask: Task<Void, Never>?
     private var lastLoggedProgressSecond = -1
+    private var hasRecordedHistoryForCurrentTrack = false
     private let queueStorageKey = "MusicGlass.PlayerQueue"
 
     private struct PlaybackResolution {
@@ -159,8 +163,10 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
 
     func seek(to time: TimeInterval) {
         let cmTime = CMTime(seconds: max(0, time), preferredTimescale: 600)
+        lastSeekTime = Date()
         player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         progress = time
+        PlayerProgressTracker.shared.update(progress: time, duration: self.duration ?? 0)
         updateNowPlaying()
     }
 
@@ -237,7 +243,7 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
                 AppLogger.playback.notice("Loading stream for \(playbackTrack.videoId, privacy: .public) via \(resolution.streamURL.host ?? "unknown-host", privacy: .public)")
                 player.play()
                 state = .loading
-                try? historyRepository.add(playbackTrack)
+                hasRecordedHistoryForCurrentTrack = false
                 persistQueue()
                 scheduleRelatedQueue(for: playbackTrack, replaceUpcoming: replaceUpcomingWithRelated)
                 updateNowPlaying()
@@ -415,15 +421,36 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor in
                 guard let self else { return }
+                
+                // Ignore observer updates if we just performed a manual seek (prevents snapback)
+                if Date().timeIntervalSince(self.lastSeekTime) < 0.5 {
+                    return
+                }
+
                 let seconds = time.seconds
                 if seconds.isFinite {
                     self.progress = seconds
+                    PlayerProgressTracker.shared.update(progress: seconds, duration: self.duration ?? 0)
+                    
                     let isAdvancing = self.player.rate > 0 && self.player.timeControlStatus == .playing
                     if seconds > 0, isAdvancing, self.state != .playing {
                         self.state = .playing
                     }
+                    
+                    // History recording logic (30s rule or 50% of track)
+                    if !self.hasRecordedHistoryForCurrentTrack, let current = self.currentTrack {
+                        let duration = self.duration ?? current.duration ?? 0
+                        let threshold = min(30.0, duration > 0 ? duration * 0.5 : 30.0)
+                        if seconds >= threshold {
+                            self.hasRecordedHistoryForCurrentTrack = true
+                            Task {
+                                try? await self.historyRepository.add(current)
+                            }
+                        }
+                    }
+                    
                     self.logPlaybackProgressIfNeeded(seconds)
-
+                    
                     // Auto-next: if we know the real track duration and playback has reached it,
                     // skip to next immediately instead of waiting for AVPlayer's (wrong) end signal
                     if let knownDuration = self.currentTrack?.duration,
@@ -440,6 +467,7 @@ final class AVPlayerEngine: NSObject, ObservableObject, PlayerEngineProtocol {
                     let trackHasDuration = (self.currentTrack?.duration ?? 0) > 0
                     if !trackHasDuration {
                         self.duration = itemDuration
+                        PlayerProgressTracker.shared.update(progress: self.progress, duration: itemDuration)
                     }
                 }
                 self.updateNowPlaying()
@@ -743,5 +771,24 @@ private extension Track {
         let candidateLine = artistLine.musicGlassQueueNormalized
         guard !candidateLine.isEmpty else { return false }
         return originalArtists.contains { candidateLine.contains($0) || $0.contains(candidateLine) }
+    }
+}
+
+@MainActor
+final class PlayerProgressTracker: ObservableObject {
+    @Published var progress: TimeInterval = 0
+    @Published var duration: TimeInterval = 0
+    
+    static let shared = PlayerProgressTracker()
+    
+    private init() {}
+    
+    func update(progress: TimeInterval, duration: TimeInterval) {
+        if self.progress != progress {
+            self.progress = progress
+        }
+        if self.duration != duration {
+            self.duration = duration
+        }
     }
 }

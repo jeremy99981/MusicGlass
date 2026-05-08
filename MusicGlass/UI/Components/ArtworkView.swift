@@ -14,7 +14,6 @@ struct ArtworkView: View {
             if let image = loader.image {
                 Image(uiImage: image)
                     .resizable()
-                    .interpolation(.high)
                     .antialiased(true)
                     .scaledToFill()
                     .transition(.asymmetric(
@@ -36,7 +35,7 @@ struct ArtworkView: View {
         )
         .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
         .task(id: url) {
-            await loader.load(from: url)
+            await loader.load(from: url, targetSize: size * UIScreen.main.scale)
         }
         .animation(animateArtworkUpdates ? .spring(response: 0.44, dampingFraction: 0.84) : nil, value: loader.image != nil)
         .accessibilityHidden(true)
@@ -61,8 +60,8 @@ private final class ArtworkImageLoader: ObservableObject {
     @Published private(set) var image: UIImage?
     @Published private(set) var didFail = false
 
-    private static let cache: NSCache<NSURL, UIImage> = {
-        let cache = NSCache<NSURL, UIImage>()
+    private static let cache: NSCache<AnyObject, UIImage> = {
+        let cache = NSCache<AnyObject, UIImage>()
         cache.countLimit = 200
         cache.totalCostLimit = 128 * 1024 * 1024 // 128 MB
         return cache
@@ -80,24 +79,38 @@ private final class ArtworkImageLoader: ObservableObject {
 
     private var currentURL: URL?
 
-    func load(from url: URL?) async {
+    func load(from url: URL?, targetSize: CGFloat) async {
         currentURL = url
         image = nil
         didFail = false
 
         guard let url else { return }
-        let cacheKey = ArtworkURLResolver.cacheKey(for: url)
-        if let cached = Self.cache.object(forKey: cacheKey as NSURL) {
+        let cacheKey = "\(url.absoluteString)_\(Int(targetSize))"
+        if let cached = Self.cache.object(forKey: cacheKey as NSString) {
             image = cached
             return
         }
 
         do {
-            let rawImage = try await loadBestImage(from: ArtworkURLResolver.candidates(for: url))
+            let candidates = ArtworkURLResolver.candidates(for: url)
+            let scale = await UIScreen.main.scale
+            let result = try await Task.detached(priority: .userInitiated) { [scale] () -> UIImage in
+                let rawImage = try await self.loadBestImage(from: candidates)
+                let processed = rawImage.musicGlassArtworkCrop(for: url)
+                
+                // Downsample to target size
+                let finalSize = CGSize(width: targetSize, height: targetSize)
+                UIGraphicsBeginImageContextWithOptions(finalSize, false, 1.0)
+                processed.draw(in: CGRect(origin: .zero, size: finalSize))
+                let downsampled = UIGraphicsGetImageFromCurrentImageContext()
+                UIGraphicsEndImageContext()
+                
+                return downsampled ?? processed
+            }.value
+            
             guard currentURL == url else { return }
-            let processed = rawImage.musicGlassArtworkCrop(for: url)
-            Self.cache.setObject(processed, forKey: cacheKey as NSURL, cost: processed.jpegData(compressionQuality: 0.5)?.count ?? 0)
-            image = processed
+            Self.cache.setObject(result, forKey: cacheKey as NSString, cost: result.jpegData(compressionQuality: 0.5)?.count ?? 0)
+            image = result
         } catch {
             guard currentURL == url else { return }
             didFail = true

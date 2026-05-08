@@ -4,6 +4,7 @@ import Foundation
 final class HomeViewModel: ObservableObject {
     @Published private(set) var feed: HomeFeed = .empty
     @Published private(set) var isLoading = false
+    @Published private(set) var greeting: String = ""
     @Published var errorMessage: String?
     private(set) var hasLoadedBaseFeed = false
 
@@ -15,6 +16,16 @@ final class HomeViewModel: ObservableObject {
         self.client = client
         self.historyRepository = historyRepository
         self.authService = authService
+        self.updateGreeting()
+    }
+    
+    func updateGreeting() {
+        let hour = Calendar.current.component(.hour, from: Date())
+        greeting = switch hour {
+        case 5..<12: "Bonjour"
+        case 12..<18: "Bon après-midi"
+        default: "Bonsoir"
+        }
     }
 
     func loadIfNeeded() {
@@ -57,18 +68,27 @@ final class HomeViewModel: ObservableObject {
     func refreshRecentlyPlayedSection() {
         let history = ((try? historyRepository.recentlyPlayed()) ?? [])
             .filter(\.musicGlassIsHomeTrack)
-        var sections = feed.sections.filter { $0.id != "recently-played" }
-
-        if !history.isEmpty {
+        
+        let newItems = history.prefix(12).map(HomeItem.track)
+        
+        // Find existing recently-played section
+        if let index = feed.sections.firstIndex(where: { $0.id == "recently-played" }) {
+            // Only update if items changed
+            if feed.sections[index].items != newItems {
+                var sections = feed.sections
+                sections[index].items = newItems
+                feed = HomeFeed(sections: sections)
+            }
+        } else if !newItems.isEmpty {
+            var sections = feed.sections
             let recentlyPlayed = HomeSection(
                 id: "recently-played",
                 title: "Écoutés récemment",
-                items: history.prefix(12).map(HomeItem.track)
+                items: newItems
             )
             sections.insert(recentlyPlayed, at: 0)
+            feed = HomeFeed(sections: sections)
         }
-
-        feed = HomeFeed(sections: sections)
     }
 
     private func buildFeed(baseFeed: HomeFeed, history: [Track], discoverySections: [HomeSection], userPlaylists: [Playlist]) -> HomeFeed {

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,11 +51,19 @@ import com.musicglass.app.ui.player.FullPlayerDialog
 import com.musicglass.app.youtubemusic.bestThumbnailUrl
 import kotlinx.coroutines.launch
 
+import com.musicglass.app.ui.features.SettingsScreen
+import com.musicglass.app.ui.features.SettingsViewModel
+import com.musicglass.app.ui.features.profile.ProfileBottomSheet
+
+import com.musicglass.app.ui.features.library.artists.ArtistsScreen
+import com.musicglass.app.ui.features.auth.AccountAuthScreen
+
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Home : Screen("home", "Accueil", Icons.Filled.Home)
     object Search : Screen("search", "Recherche", Icons.Filled.Search)
     object Library : Screen("library", "Bibliothèque", Icons.Filled.LibraryMusic)
     object Settings : Screen("settings", "Réglages", Icons.Filled.Settings)
+    object AccountAuth : Screen("account_auth", "Compte MusicGlass", Icons.Filled.AccountCircle)
 }
 
 val bottomNavItems = listOf(
@@ -70,6 +79,8 @@ fun MainScreen() {
     val navController = rememberNavController()
     val playerViewModel: com.musicglass.app.playback.PlayerViewModel = viewModel()
     val updateViewModel: UpdateViewModel = viewModel()
+    val settingsViewModel: SettingsViewModel = viewModel()
+    
     val currentTrack by playerViewModel.currentTrack.collectAsState()
     val currentSongInfo by playerViewModel.currentSongInfo.collectAsState()
     val isLoading by playerViewModel.isLoading.collectAsState()
@@ -77,6 +88,8 @@ fun MainScreen() {
     val currentDestination = navBackStackEntry?.destination
     val showBottomBar = currentDestination?.route != "login"
     var showFullPlayer by rememberSaveable { mutableStateOf(false) }
+    var showProfileSheet by rememberSaveable { mutableStateOf(false) }
+    
     val scope = rememberCoroutineScope()
     val innerTubeClient = remember { InnerTubeClient() }
     val mapper = remember { InnerTubeJSONMapper() }
@@ -131,16 +144,12 @@ fun MainScreen() {
                                     label = { Text(screen.title) },
                                     selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                                     onClick = {
-                                        if (screen == Screen.Home) {
-                                            navController.popBackStack(Screen.Home.route, inclusive = false)
-                                        } else {
-                                            navController.navigate(screen.route) {
-                                                popUpTo(Screen.Home.route) {
-                                                    saveState = false
-                                                }
-                                                launchSingleTop = true
-                                                restoreState = false
+                                        navController.navigate(screen.route) {
+                                            popUpTo(Screen.Home.route) {
+                                                saveState = true
                                             }
+                                            launchSingleTop = true
+                                            restoreState = true
                                         }
                                     }
                                 )
@@ -168,7 +177,8 @@ fun MainScreen() {
                             if (item.type == com.musicglass.app.youtubemusic.ItemType.SONG) {
                                 playerViewModel.playRadio(item)
                             }
-                        }
+                        },
+                        onProfileClick = { showProfileSheet = true }
                     )
                 }
                 composable("playlist/{id}") { backStackEntry ->
@@ -225,6 +235,30 @@ fun MainScreen() {
                         onRadio = { item -> playerViewModel.playRadio(item) },
                         onNavigate = { item ->
                             navigateToMedia(item)
+                        },
+                        onArtistsClick = { navController.navigate("library/artists") }
+                    )
+                }
+                composable("library/artists") {
+                    ArtistsScreen(
+                        onBack = { navController.popBackStack() },
+                        onArtistClick = { name, browseId ->
+                            if (!browseId.isNullOrBlank()) {
+                                navController.navigate("artist/${Uri.encode(browseId)}")
+                            } else {
+                                // Try to find artist by name via search if browseId is missing
+                                scope.launch {
+                                    val resolvedId = runCatching {
+                                        mapper.mapSearchResults(innerTubeClient.search(name, params = "EgWKAQIgAWoKEAkQChAFEAMQBA%3D%3D"))
+                                            .firstOrNull { it.type == ItemType.ARTIST }
+                                            ?.browseId
+                                    }.getOrNull()
+                                    
+                                    if (!resolvedId.isNullOrBlank()) {
+                                        navController.navigate("artist/${Uri.encode(resolvedId)}")
+                                    }
+                                }
+                            }
                         }
                     )
                 }
@@ -241,7 +275,29 @@ fun MainScreen() {
                         }
                     )
                 }
+                composable(Screen.AccountAuth.route) {
+                    AccountAuthScreen(
+                        onBack = { navController.popBackStack() },
+                        onSuccess = { navController.popBackStack() }
+                    )
+                }
             }
+        }
+
+        if (showProfileSheet) {
+            ProfileBottomSheet(
+                onDismiss = { showProfileSheet = false },
+                settingsViewModel = settingsViewModel,
+                updateViewModel = updateViewModel,
+                onLoginYouTubeMusic = {
+                    showProfileSheet = false
+                    navController.navigate("login")
+                },
+                onLoginAccount = {
+                    showProfileSheet = false
+                    navController.navigate(Screen.AccountAuth.route)
+                }
+            )
         }
 
         if (showFullPlayer) {

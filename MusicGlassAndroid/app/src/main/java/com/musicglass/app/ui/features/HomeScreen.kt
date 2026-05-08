@@ -40,7 +40,8 @@ import java.util.Calendar
 fun HomeScreen(
     viewModel: HomeViewModel = viewModel(),
     onSongClick: (SongItem) -> Unit = {},
-    onRadio: (SongItem) -> Unit = {}
+    onRadio: (SongItem) -> Unit = {},
+    onProfileClick: () -> Unit = {}
 ) {
     val homeFeed by viewModel.homeFeed.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -74,7 +75,7 @@ fun HomeScreen(
                     contentPadding = WindowInsets.safeDrawing.only(WindowInsetsSides.Top).asPaddingValues()
                 ) {
                     item {
-                        HomeHeader()
+                        HomeHeader(onProfileClick = onProfileClick)
                     }
                     items(homeFeed) { section ->
                         HomeSectionView(section = section, onSongClick = onSongClick, onRadio = onRadio)
@@ -115,7 +116,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader() {
+private fun HomeHeader(onProfileClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -131,18 +132,23 @@ private fun HomeHeader() {
             modifier = Modifier.weight(1f)
         )
         Spacer(Modifier.width(16.dp))
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .background(Color(0xFFC26E7A), shape = CircleShape), // Matching the iOS pink/red color
-            contentAlignment = Alignment.Center
+        IconButton(
+            onClick = onProfileClick,
+            modifier = Modifier.size(36.dp)
         ) {
-            Text(
-                text = "MG", 
-                color = Color.White, 
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.labelLarge
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFC26E7A), shape = CircleShape), // Matching the iOS pink/red color
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "MG",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
     }
 }

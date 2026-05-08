@@ -20,6 +20,7 @@ final class StoredTrackRecord {
     var duration: TimeInterval?
     var thumbnailURLString: String?
     var playCount: Int
+    var sourceRaw: String = "inApp"
     var createdAt: Date
     var updatedAt: Date
 
@@ -40,6 +41,10 @@ final class StoredTrackRecord {
 
     var kind: StoredTrackKind {
         StoredTrackKind(rawValue: kindRaw) ?? .history
+    }
+
+    var source: String {
+        sourceRaw
     }
 
     func update(from track: Track, date: Date = Date(), incrementPlayCount: Bool = false) {

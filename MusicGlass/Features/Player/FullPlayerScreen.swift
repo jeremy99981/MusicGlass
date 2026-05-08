@@ -37,7 +37,7 @@ struct FullPlayerScreen: View {
                         nextURL: nextSwipeArtworkURL,
                         size: artworkSize,
                         identity: player.currentTrack?.id,
-                        previousRestartsCurrentTrack: player.progress > 5,
+                        previousRestartsCurrentTrack: PlayerProgressTracker.shared.progress > 5,
                         onPrevious: { player.previous() },
                         onNext: { player.next() }
                     )
@@ -46,11 +46,7 @@ struct FullPlayerScreen: View {
                     VStack(alignment: .leading, spacing: isCompact ? 14 : 18) {
                         metadataRow
 
-                        PlayerProgressBar(
-                            progress: clampedProgress,
-                            duration: displayedDuration,
-                            seek: { player.seek(to: $0) }
-                        )
+                        PlayerProgressSection(player: player)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, isCompact ? 16 : 20)
@@ -81,7 +77,7 @@ struct FullPlayerScreen: View {
         .ignoresSafeArea()
         .presentationBackground(.clear)
         .background(ClearFullScreenCoverBackground())
-        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(.dark)
     }
 
     private func dismissDragGesture(screenHeight: CGFloat) -> some Gesture {
@@ -206,6 +202,7 @@ struct FullPlayerScreen: View {
         }
         .frame(width: size.width, height: size.height)
         .ignoresSafeArea()
+        .drawingGroup()
     }
 
     private func closeHandle(safeTop: CGFloat) -> some View {
@@ -450,6 +447,24 @@ struct FullPlayerScreen: View {
     }
 }
 
+private struct PlayerProgressSection: View {
+    @ObservedObject var tracker = PlayerProgressTracker.shared
+    var player: AVPlayerEngine
+
+    private var clampedProgress: TimeInterval {
+        let duration = max(tracker.duration, 0)
+        return min(max(tracker.progress, 0), duration > 0 ? duration : max(tracker.progress, 0))
+    }
+
+    var body: some View {
+        PlayerProgressBar(
+            progress: clampedProgress,
+            duration: max(tracker.duration, 0),
+            seek: { player.seek(to: $0) }
+        )
+    }
+}
+
 private extension UIApplication {
     static var musicGlassSafeAreaInsets: UIEdgeInsets {
         shared.connectedScenes
@@ -465,14 +480,20 @@ private struct PlayerProgressBar: View {
     var duration: TimeInterval
     var seek: (TimeInterval) -> Void
 
+    @State private var dragProgress: TimeInterval? = nil
+
+    private var effectiveProgress: TimeInterval {
+        dragProgress ?? progress
+    }
+
     private var fraction: CGFloat {
         guard duration > 0 else { return 0 }
-        return CGFloat(min(max(progress / duration, 0), 1))
+        return CGFloat(min(max(effectiveProgress / duration, 0), 1))
     }
 
     private var remainingTimeLabel: String {
         guard duration > 0 else { return "--:--" }
-        return "-\(max(duration - progress, 0).musicTimeString)"
+        return "-\(max(duration - effectiveProgress, 0).musicTimeString)"
     }
 
     var body: some View {
@@ -506,16 +527,27 @@ private struct PlayerProgressBar: View {
                         .onChanged { value in
                             guard duration > 0, width > 0 else { return }
                             let ratio = min(max(value.location.x / width, 0), 1)
-                            seek(duration * ratio)
+                            dragProgress = duration * ratio
+                        }
+                        .onEnded { _ in
+                            if let finalProgress = dragProgress {
+                                seek(finalProgress)
+                            }
+                            // Force instantaneous reset to prevent visual snapback animation
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                dragProgress = nil
+                            }
                         }
                 )
             }
             .frame(height: 24)
             .accessibilityLabel("Progression")
-            .accessibilityValue("\(progress.musicTimeString) sur \(duration.musicTimeString)")
+            .accessibilityValue("\(effectiveProgress.musicTimeString) sur \(duration.musicTimeString)")
 
             HStack {
-                Text(progress.musicTimeString)
+                Text(effectiveProgress.musicTimeString)
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.white.opacity(0.58))
 
@@ -709,10 +741,11 @@ private struct SwipeablePlayerArtworkView: View {
                 PlayerArtworkView(url: nextURL ?? url, size: size, showsShadow: false)
             }
             .frame(width: (size * 3) + 28, height: size)
-            .background(Color.black.opacity(0.22))
+            .background(Color.black.opacity(0.001))
             .offset(x: offsetX)
             .scaleEffect(visualScale)
             .opacity(visualOpacity)
+            .drawingGroup()
         }
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -751,8 +784,12 @@ private struct SwipeablePlayerArtworkView: View {
                 let rawOffset = value.translation.width * resistance
                 offsetX = min(max(rawOffset, -pageStride), pageStride)
                 let progress = min(abs(offsetX) / max(pageStride, 1), 1)
-                visualOpacity = 1 - (progress * 0.04)
-                visualScale = 1 - (progress * 0.012)
+                
+                // Optimized visual updates: only update scale/opacity if they change meaningfully
+                let newOpacity = 1 - (progress * 0.04)
+                let newScale = 1 - (progress * 0.012)
+                if abs(visualOpacity - newOpacity) > 0.005 { visualOpacity = newOpacity }
+                if abs(visualScale - newScale) > 0.005 { visualScale = newScale }
             }
             .onEnded { value in
                 guard !isCommitting else { return }
@@ -802,20 +839,23 @@ private struct SwipeablePlayerArtworkView: View {
         isCommitting = true
         commitDirection = direction
 
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.86)) {
             offsetX = direction * pageStride
             visualOpacity = 1
             visualScale = 1
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+        // Delay the actual track change to let the animation breathe
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             action()
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.58) {
-            guard isCommitting else { return }
-            resetArtwork()
-            isCommitting = false
+        // Safety reset in case the identity change doesn't trigger
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            if isCommitting {
+                finalizeCommittedArtwork()
+            }
         }
     }
 
@@ -830,7 +870,7 @@ private struct SwipeablePlayerArtworkView: View {
     }
 
     private func resetArtwork() {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+        withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.1)) {
             offsetX = 0
             visualOpacity = 1
             visualScale = 1
@@ -903,7 +943,7 @@ private struct PlayerArtworkView: View {
                 )
                 .shadow(color: .black.opacity(0.28), radius: 34, y: 18)
                 .task(id: url) {
-                    await loader.load(from: url)
+                    await loader.load(from: url, targetSize: size)
                 }
                 .accessibilityHidden(true)
         } else {
@@ -911,7 +951,7 @@ private struct PlayerArtworkView: View {
                 .frame(width: size, height: size)
                 .clipped()
                 .task(id: url) {
-                    await loader.load(from: url)
+                    await loader.load(from: url, targetSize: size)
                 }
                 .accessibilityHidden(true)
         }
@@ -951,27 +991,45 @@ private struct PlayerArtworkView: View {
 @MainActor
 private final class PlayerArtworkLoader: ObservableObject {
     @Published private(set) var image: UIImage?
-
-    private static let cache = NSCache<NSURL, UIImage>()
+    private static let cache: NSCache<AnyObject, UIImage> = {
+        let cache = NSCache<AnyObject, UIImage>()
+        cache.countLimit = 150
+        cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
+        return cache
+    }()
     private var currentURL: URL?
 
-    func load(from url: URL?) async {
+    func load(from url: URL?, targetSize: CGFloat = 350) async {
         currentURL = url
         image = nil
 
         guard let url else { return }
-        let cacheKey = PlayerArtworkURLResolver.cacheKey(for: url)
-        if let cached = Self.cache.object(forKey: cacheKey as NSURL) {
+        let cacheKey = "\(url.absoluteString)_\(Int(targetSize))" as NSString
+        if let cached = Self.cache.object(forKey: cacheKey) {
             image = cached
             return
         }
 
         do {
-            let rawImage = try await loadBestImage(from: PlayerArtworkURLResolver.candidates(for: url))
+            let candidates = PlayerArtworkURLResolver.candidates(for: url)
+            let scale = await UIScreen.main.scale
+            let result = try await Task.detached(priority: .userInitiated) { [scale] () -> UIImage in
+                let rawImage = try await self.loadBestImage(from: candidates)
+                let processed = rawImage.musicGlassPreparedArtwork(for: url)
+                
+                // Downsample
+                let finalSize = CGSize(width: targetSize, height: targetSize)
+                UIGraphicsBeginImageContextWithOptions(finalSize, false, 1.0)
+                processed.draw(in: CGRect(origin: .zero, size: finalSize))
+                let downsampled = UIGraphicsGetImageFromCurrentImageContext()
+                UIGraphicsEndImageContext()
+                
+                return downsampled ?? processed
+            }.value
+            
             guard currentURL == url else { return }
-            let processed = rawImage.musicGlassPreparedArtwork(for: url)
-            Self.cache.setObject(processed, forKey: cacheKey as NSURL)
-            image = processed
+            Self.cache.setObject(result, forKey: cacheKey)
+            image = result
         } catch {
             image = nil
         }

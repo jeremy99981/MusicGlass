@@ -23,6 +23,7 @@ import com.musicglass.app.youtubemusic.SongItem
 import com.musicglass.app.youtubemusic.ItemType
 import com.musicglass.app.youtubemusic.bestThumbnailUrl
 import com.musicglass.app.youtubemusic.cleanedMusicGlassMetadata
+import com.musicglass.app.youtubemusic.isSameQueueItemAs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1020,7 +1021,12 @@ class MusicGlassPlaybackController private constructor(context: Context) {
         playSongItem(item, _queue.value)
     }
 
-    private fun scheduleRelatedQueue(seed: SongItem, forceRadio: Boolean = false) {
+    private fun scheduleRelatedQueue(
+        seed: SongItem,
+        forceRadio: Boolean = false,
+        replaceUpcoming: Boolean = false,
+        replaceIncoming: Boolean = false
+    ) {
         relatedQueueJob?.cancel()
         relatedQueueJob = scope.launch {
             val related = fetchRelatedTracks(seed, forceRadio)
@@ -1031,17 +1037,27 @@ class MusicGlassPlaybackController private constructor(context: Context) {
             val current = currentQueue.getOrNull(currentIndex) ?: return@launch
             if (current.id != seed.id) return@launch
 
-            val seenIds = currentQueue.map { it.id }.toMutableSet()
+            val seenIds = mutableSetOf<String>()
+            
+            val baseQueue = if (replaceUpcoming || replaceIncoming) {
+                currentQueue.subList(0, currentIndex + 1)
+            } else {
+                currentQueue
+            }
+            
+            baseQueue.forEach { seenIds.add(it.id) }
+
             val additions = related
                 .filter { it.id != seed.id }
                 .filter { seenIds.add(it.id) }
                 .take(24)
-            if (additions.isEmpty()) return@launch
+            
+            if (additions.isEmpty() && !(replaceUpcoming || replaceIncoming)) return@launch
 
-            _queue.value = currentQueue + additions
+            _queue.value = baseQueue + additions
             updateQueueCapabilities()
             scheduleNextTrackPreload()
-            Log.d(TAG, "Related queue appended: ${additions.size} tracks for ${seed.title}")
+            Log.d(TAG, "Related queue ${if (replaceUpcoming || replaceIncoming) "replaced" else "appended"}: ${additions.size} tracks for ${seed.title}")
         }
     }
 

@@ -116,36 +116,75 @@ object UpdateRepository {
             }
 
             val release = json.decodeFromString<GitHubRelease>(body)
+            Log.d(TAG, "Latest release found: ${release.tagName} (Name: ${release.name})")
 
-            // Find the .apk asset
-            val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
-            if (apkAsset == null) {
-                Log.w(TAG, "No APK asset found in release ${release.tagName}")
+            // Find the best .apk asset
+            val apkAssets = release.assets.filter { it.name.endsWith(".apk") }
+            Log.d(TAG, "Found ${apkAssets.size} APK assets: ${apkAssets.map { it.name }}")
+
+            val selectedApk = when {
+                apkAssets.isEmpty() -> {
+                    Log.w(TAG, "No APK asset found in release ${release.tagName}")
+                    null
+                }
+                apkAssets.size == 1 -> {
+                    val asset = apkAssets.first()
+                    Log.d(TAG, "Single APK found, selecting: ${asset.name}")
+                    asset
+                }
+                else -> {
+                    // Multiple APKs: prioritize those containing "MusicGlass" and the version string
+                    val version = release.tagName.removePrefix("v")
+                    val prioritized = apkAssets.find { 
+                        it.name.contains("MusicGlass", ignoreCase = true) && it.name.contains(version) 
+                    } ?: apkAssets.find { 
+                        it.name.contains("release", ignoreCase = true) && !it.name.contains("unsigned", ignoreCase = true)
+                    } ?: apkAssets.find { 
+                        it.name.contains("release", ignoreCase = true)
+                    } ?: apkAssets.find { 
+                        !it.name.contains("debug", ignoreCase = true)
+                    } ?: apkAssets.first()
+                    
+                    Log.d(TAG, "Multiple APKs found, selected: ${prioritized.name} based on priority logic")
+                    prioritized
+                }
+            }
+
+            if (selectedApk == null) {
                 _updateState.value = UpdateCheckState.NoUpdate
                 return@withContext null
             }
 
+            val currentVersion = BuildConfig.VERSION_NAME
+            val comparison = compareVersions(release.tagName, currentVersion)
+            val isUpdateAvailable = comparison > 0
+
+            Log.d(TAG, "Version comparison: Installed=$currentVersion, Remote=${release.tagName} -> UpdateAvailable=$isUpdateAvailable")
+
             val updateInfo = UpdateInfo(
                 latestVersion = release.tagName,
-                currentVersion = BuildConfig.VERSION_NAME,
+                currentVersion = currentVersion,
                 releaseNotes = release.body ?: "",
                 releaseName = release.name ?: release.tagName,
-                apkDownloadUrl = apkAsset.browserDownloadUrl,
-                apkSizeBytes = apkAsset.size
+                apkDownloadUrl = selectedApk.browserDownloadUrl,
+                apkSizeBytes = selectedApk.size
             )
 
             cachedUpdateInfo = updateInfo
 
-            if (updateInfo.isUpdateAvailable) {
+            if (isUpdateAvailable) {
                 // Check if user dismissed this version (only for non-forced checks)
                 val dismissed = getDismissedVersion()
                 if (!forceShow && dismissed == updateInfo.latestVersion) {
+                    Log.d(TAG, "Update available (${updateInfo.latestVersion}) but dismissed by user")
                     _updateState.value = UpdateCheckState.NoUpdate
                     return@withContext null
                 }
+                Log.i(TAG, "Update confirmed: ${updateInfo.latestVersion} is available for download")
                 _updateState.value = UpdateCheckState.UpdateAvailable(updateInfo)
                 return@withContext updateInfo
             } else {
+                Log.d(TAG, "Application is up to date (Installed: $currentVersion)")
                 _updateState.value = UpdateCheckState.NoUpdate
                 return@withContext null
             }

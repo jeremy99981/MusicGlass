@@ -143,6 +143,13 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Manually shows the update dialog (e.g. if an update was already found).
+     */
+    fun showUpdateDialog() {
+        _showUpdateDialog.value = true
+    }
+
+    /**
      * Starts the APK download and installation.
      */
     fun downloadUpdate(updateInfo: UpdateInfo) {

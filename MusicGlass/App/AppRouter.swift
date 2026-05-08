@@ -27,4 +27,6 @@ enum MusicDestination: Hashable {
     case album(String)
     case artist(String)
     case playlist(String)
+    case libraryArtists
+    case libraryArtist(String)
 }

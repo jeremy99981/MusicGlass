@@ -1,49 +1,27 @@
 package com.musicglass.app.ui.features
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -56,6 +34,7 @@ import com.musicglass.app.youtubemusic.bestThumbnailUrl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com.musicglass.app.persistence.LibraryRepository
 
 data class LibraryUiState(
     val isAuthenticated: Boolean = false,
@@ -74,22 +53,55 @@ class LibraryViewModel : ViewModel() {
     val state: StateFlow<LibraryUiState> = _state
 
     init {
+        // Immediate restoration from repository cache if available
+        LibraryRepository.getCachedData()?.let { cached ->
+            _state.value = _state.value.copy(
+                likedSongs = cached.likedSongs,
+                playlists = cached.playlists,
+                history = cached.history
+            )
+        }
+
         viewModelScope.launch {
             AuthService.state.collect { auth ->
                 _state.value = _state.value.copy(isAuthenticated = auth.isAuthenticated)
-                if (auth.isAuthenticated) load()
+                if (auth.isAuthenticated) load(force = false)
             }
         }
     }
 
-    fun load() {
+    fun load(force: Boolean = false) {
         viewModelScope.launch {
             if (!AuthService.state.value.isAuthenticated) {
                 _state.value = LibraryUiState(isAuthenticated = false)
+                LibraryRepository.clearCache()
                 return@launch
             }
 
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            // Memory Cache: Skip if data already exists and not forcing refresh
+            // Also check repository cache if state is empty but repository is not
+            val hasData = _state.value.playlists.isNotEmpty() || LibraryRepository.hasCache()
+            if (!force && hasData && _state.value.playlists.isNotEmpty()) {
+                return@launch
+            }
+            
+            // If we have repository cache but state is empty, restore it first before fetching
+            if (_state.value.playlists.isEmpty()) {
+                LibraryRepository.getCachedData()?.let { cached ->
+                    _state.value = _state.value.copy(
+                        likedSongs = cached.likedSongs,
+                        playlists = cached.playlists,
+                        history = cached.history
+                    )
+                }
+            }
+
+            // Only show loader if we don't have data yet
+            _state.value = _state.value.copy(
+                isLoading = _state.value.playlists.isEmpty(),
+                error = null
+            )
+            
             var authFailures = 0
 
             val likedResult = runCatching { mapper.mapLikedSongs(client.getLikedSongs()) }
@@ -115,16 +127,26 @@ class LibraryViewModel : ViewModel() {
             _state.value = _state.value.copy(
                 isAuthenticated = true,
                 isLoading = false,
-                likedSongs = liked,
-                playlists = playlists,
-                history = history,
+                likedSongs = if (likedResult.isSuccess) liked else _state.value.likedSongs,
+                playlists = if (playlistResult.isSuccess) playlists else _state.value.playlists,
+                history = if (historyResult.isSuccess) history else _state.value.history,
                 error = if (allFailed) "Bibliothèque YouTube Music indisponible pour le moment." else null
             )
+
+            // Update Repository Cache
+            if (!allFailed) {
+                LibraryRepository.updateCache(
+                    likedSongs = _state.value.likedSongs,
+                    playlists = _state.value.playlists,
+                    history = _state.value.history
+                )
+            }
         }
     }
 
     fun logout() {
         AuthService.clear()
+        LibraryRepository.clearCache()
         _state.value = LibraryUiState(isAuthenticated = false)
     }
 }
@@ -141,77 +163,84 @@ fun LibraryScreen(
     onLogin: () -> Unit,
     onSongClick: (SongItem, List<SongItem>) -> Unit,
     onRadio: (SongItem) -> Unit,
-    onNavigate: (SongItem) -> Unit
+    onNavigate: (SongItem) -> Unit,
+    onArtistsClick: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
 
     LaunchedEffect(Unit) {
-        viewModel.load()
+        viewModel.load(force = false)
     }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top),
-        topBar = {
-            TopAppBar(
-                title = { Text("Bibliothèque") },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-        }
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            contentPadding = PaddingValues(bottom = 100.dp), // Extra padding for mini-player
+            verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
+            // Header
+            item {
+                LibraryHeader()
+            }
+
             if (!state.isAuthenticated) {
                 item { LoginInvite(onLogin = onLogin) }
             } else {
+                // Stats Grid
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                        LibraryTile(Icons.Filled.MusicNote, "Favoris", "${state.likedSongs.size} morceaux", Modifier.weight(1f))
-                        LibraryTile(Icons.Filled.History, "Historique", "${state.history.size} écoutes", Modifier.weight(1f))
-                    }
+                    LibraryStatsGrid(
+                        likedCount = state.likedSongs.size,
+                        playlistsCount = state.playlists.size
+                    )
                 }
 
-                if (state.isLoading) {
+                // Shortcuts Grid
+                item {
+                    LibraryShortcutGrid(onArtistsClick = onArtistsClick)
+                }
+
+                // Only show loader if we have NO data. Otherwise, load in background silently.
+                if (state.isLoading && state.playlists.isEmpty()) {
                     item {
-                        Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
+                        Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(strokeWidth = 3.dp)
                         }
                     }
                 }
 
                 state.error?.let { error ->
-                    item { Text(error, color = MaterialTheme.colorScheme.error) }
-                }
-
-                if (state.playlists.isNotEmpty()) {
-                    item { SectionTitle("Mes playlists YouTube Music") }
-                    items(state.playlists, key = { "playlist-${it.id}" }) { playlist ->
-                        LibraryMediaRow(item = playlist, onClick = { onNavigate(playlist) })
+                    item { 
+                        Text(
+                            text = error, 
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        ) 
                     }
                 }
 
-                if (state.likedSongs.isNotEmpty()) {
-                    item { SectionTitle("Favoris") }
-                    items(state.likedSongs.take(30), key = { "liked-${it.id}" }) { song ->
-                        SearchListItem(
-                            song,
-                            onClick = { onSongClick(song, state.likedSongs) },
-                            onRadio = { onRadio(song) }
+                // Playlists Section
+                if (state.playlists.isNotEmpty()) {
+                    item {
+                        LibraryPlaylistsSection(
+                            playlists = state.playlists,
+                            onPlaylistClick = onNavigate
                         )
                     }
                 }
 
+                // Recently Played Section
                 if (state.history.isNotEmpty()) {
-                    item { SectionTitle("Écoutés récemment") }
-                    items(state.history.take(30), key = { "history-${it.id}" }) { song ->
-                        SearchListItem(
-                            song,
-                            onClick = { onSongClick(song, state.history) },
-                            onRadio = { onRadio(song) }
+                    item {
+                        RecentlyPlayedSection(
+                            history = state.history,
+                            onSongClick = onSongClick,
+                            onRadio = onRadio
                         )
                     }
                 }
@@ -223,12 +252,320 @@ fun LibraryScreen(
                     state.history.isEmpty()
                 ) {
                     item {
-                        Text(
-                            "Votre bibliothèque YouTube Music est vide ou n'a pas encore été synchronisée.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                "Votre bibliothèque est vide.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryHeader() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+    ) {
+        Text(
+            text = "Bibliothèque",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onBackground,
+            letterSpacing = (-0.5).sp
+        )
+        Text(
+            text = "Votre musique, vos playlists, vos favoris.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun LibraryStatsGrid(likedCount: Int, playlistsCount: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        LibraryStatCard(
+            title = "TITRES AIMÉS",
+            count = likedCount,
+            icon = Icons.Filled.Favorite,
+            iconColor = Color(0xFFD84B5F), // More vibrant pink
+            modifier = Modifier.weight(1f)
+        )
+        LibraryStatCard(
+            title = "PLAYLISTS",
+            count = playlistsCount,
+            icon = Icons.Filled.LibraryMusic,
+            iconColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun LibraryStatCard(
+    title: String,
+    count: Int,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.height(118.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+            // Icon Top Start
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .align(Alignment.TopStart)
+                    .clip(CircleShape)
+                    .background(iconColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(22.dp))
+            }
+            
+            // Large Number Right Center -> Moved to TopEnd
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 2.dp) // Optical alignment with icon center
+            )
+
+            // Label Bottom Start
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.align(Alignment.BottomStart)
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryShortcutGrid(onArtistsClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LibraryShortcutCard(
+                title = "Artistes",
+                icon = Icons.Filled.Person,
+                modifier = Modifier.weight(1f),
+                onClick = onArtistsClick
+            )
+            LibraryShortcutCard(
+                title = "Albums",
+                icon = Icons.Filled.Album,
+                modifier = Modifier.weight(1f),
+                onClick = {}
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LibraryShortcutCard(
+                title = "Téléchargements",
+                icon = Icons.Filled.CloudDownload,
+                modifier = Modifier.weight(1f),
+                onClick = {}
+            )
+            LibraryShortcutCard(
+                title = "Historique",
+                icon = Icons.Filled.History,
+                modifier = Modifier.weight(1f),
+                onClick = {}
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryShortcutCard(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .height(82.dp) // Increased height to prevent text issues
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Icon(
+                icon, 
+                contentDescription = null, 
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 20.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryPlaylistsSection(
+    playlists: List<SongItem>,
+    onPlaylistClick: (SongItem) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Mes playlists",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = CircleShape,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        playlists.size.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+        
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            items(playlists, key = { it.id }) { playlist ->
+                LibraryPlaylistCard(playlist, onClick = { onPlaylistClick(playlist) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryPlaylistCard(playlist: SongItem, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(156.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(156.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            AsyncImage(
+                model = playlist.thumbnails.bestThumbnailUrl(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // YT Music Badge
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp),
+                color = Color.Black.copy(alpha = 0.65f),
+                shape = CircleShape
+            ) {
+                Text(
+                    text = "YT Music",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = playlist.title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = playlist.artists.joinToString(", ") { it.name }.ifBlank { "Playlist" },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun RecentlyPlayedSection(
+    history: List<SongItem>,
+    onSongClick: (SongItem, List<SongItem>) -> Unit,
+    onRadio: (SongItem) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Text(
+            text = "Écoutés récemment",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 24.dp)
+        )
+        
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            history.take(6).forEach { song ->
+                SearchListItem(
+                    item = song,
+                    onClick = { onSongClick(song, history) },
+                    onRadio = { onRadio(song) }
+                )
             }
         }
     }
@@ -239,72 +576,35 @@ private fun LoginInvite(onLogin: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 60.dp),
+            .padding(horizontal = 24.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(Icons.Filled.AccountCircle, contentDescription = null, modifier = Modifier.size(56.dp))
-        Spacer(Modifier.height(14.dp))
-        Text("Connectez YouTube Music", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Surface(
+            modifier = Modifier.size(80.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.AccountCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+        Text("Connectez YouTube Music", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
         Text(
             "Vos playlists, favoris et écoutes récentes apparaîtront ici.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge
         )
-        Spacer(Modifier.height(18.dp))
-        Button(onClick = onLogin) {
-            Text("Se connecter")
-        }
-    }
-}
-
-@Composable
-private fun LibraryTile(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .clickable { }
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(34.dp))
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(title, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun LibraryMediaRow(item: SongItem, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AsyncImage(
-            model = item.thumbnails.bestThumbnailUrl(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(8.dp))
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                item.artists.joinToString(", ") { it.name }.ifBlank { "Playlist" },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Spacer(Modifier.height(32.dp))
+        Button(
+            onClick = onLogin,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            contentPadding = PaddingValues(16.dp)
+        ) {
+            Text("Se connecter", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
     }
 }

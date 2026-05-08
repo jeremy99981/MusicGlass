@@ -5,6 +5,7 @@ struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingLogin = false
+    @State private var loginStore: LoginWebViewStore?
     @AppStorage("musicglass.loginFlowInProgress") private var loginFlowInProgress = false
     @ObservedObject private var authService: AuthService
 
@@ -27,6 +28,9 @@ struct SettingsScreen: View {
                     } else {
                         LabeledContent("Statut", value: "Non connecté")
                         Button {
+                            if loginStore == nil {
+                                loginStore = LoginWebViewStore()
+                            }
                             loginFlowInProgress = true
                             showingLogin = true
                         } label: {
@@ -77,6 +81,7 @@ struct SettingsScreen: View {
             .task { viewModel.loadCacheSize() }
             .onAppear {
                 if loginFlowInProgress, !authService.isAuthenticated {
+                    if loginStore == nil { loginStore = LoginWebViewStore() }
                     showingLogin = true
                 }
             }
@@ -84,24 +89,34 @@ struct SettingsScreen: View {
                 guard newPhase == .active else { return }
                 // If the login sheet was closed by an app switch, reopen it on return.
                 if loginFlowInProgress, !showingLogin, !authService.isAuthenticated {
+                    if loginStore == nil { loginStore = LoginWebViewStore() }
                     showingLogin = true
                 }
             }
             .sheet(isPresented: $showingLogin) {
                 NavigationStack {
-                    LoginWebView(onLoginSuccess: { cookies, dataSyncId, visitorData in
-                        authService.saveAuthData(cookies: cookies, dataSyncId: dataSyncId, visitorData: visitorData)
-                        loginFlowInProgress = false
-                    }, isPresented: $showingLogin)
-                    .navigationTitle("Connexion")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Fermer") {
-                                loginFlowInProgress = false
-                                showingLogin = false
+                    if let store = loginStore {
+                        LoginWebView(store: store, onLoginSuccess: { cookies, dataSyncId, visitorData in
+                            authService.saveAuthData(cookies: cookies, dataSyncId: dataSyncId, visitorData: visitorData)
+                            loginFlowInProgress = false
+                            loginStore = nil
+                        }, isPresented: $showingLogin)
+                        .navigationTitle("Connexion")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Fermer") {
+                                    loginFlowInProgress = false
+                                    showingLogin = false
+                                    loginStore = nil
+                                }
                             }
                         }
+                    } else {
+                        ProgressView()
+                            .onAppear {
+                                loginStore = LoginWebViewStore()
+                            }
                     }
                 }
             }

@@ -1,20 +1,35 @@
 import SwiftUI
 import WebKit
 
+final class LoginWebViewStore: ObservableObject {
+    let webView: WKWebView
+    private var hasLoadedInitialURL = false
+
+    init() {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        let wv = WKWebView(frame: .zero, configuration: configuration)
+        wv.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+        self.webView = wv
+    }
+
+    func loadInitialURLIfNeeded() {
+        guard !hasLoadedInitialURL else { return }
+        hasLoadedInitialURL = true
+        let url = URL(string: "https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=https://music.youtube.com/")!
+        webView.load(URLRequest(url: url))
+    }
+}
+
 struct LoginWebView: UIViewRepresentable {
+    @ObservedObject var store: LoginWebViewStore
     let onLoginSuccess: ([HTTPCookie], String?, String?) -> Void
     @Binding var isPresented: Bool
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = store.webView
         webView.navigationDelegate = context.coordinator
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
-
-        let url = URL(string: "https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=https://music.youtube.com/")!
-        webView.load(URLRequest(url: url))
-
+        store.loadInitialURLIfNeeded()
         return webView
     }
 

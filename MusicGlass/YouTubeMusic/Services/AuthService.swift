@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import WebKit
 
 @MainActor
 final class AuthService: ObservableObject {
@@ -71,6 +72,22 @@ final class AuthService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: cookieRecordsKey)
         UserDefaults.standard.removeObject(forKey: dataSyncIdKey)
         UserDefaults.standard.removeObject(forKey: visitorDataKey)
+    }
+
+    func logout() async {
+        clear()
+        
+        let websiteDataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        let dataStore = WKWebsiteDataStore.default()
+        let records = await dataStore.dataRecords(ofTypes: websiteDataTypes)
+        
+        let targetRecords = records.filter { record in
+            let name = record.displayName.lowercased()
+            return name.contains("youtube") || name.contains("google")
+        }
+        
+        await dataStore.removeData(ofTypes: websiteDataTypes, for: targetRecords)
+        AppLogger.youtube.notice("Auth: WebKit YouTube/Google cookies and data cleared")
     }
 
     func getCookieHeader() -> String? {

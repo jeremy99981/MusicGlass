@@ -5,47 +5,44 @@ struct LibraryScreen: View {
     @EnvironmentObject private var player: AVPlayerEngine
     @Environment(\.scenePhase) private var scenePhase
     @StateObject var viewModel: LibraryViewModel
-    @State private var showSettings = false
     var playerDestination: Binding<MusicDestination?> = .constant(nil)
     @State private var navigationPath: [MusicDestination] = []
-    @AppStorage("musicglass.loginFlowInProgress") private var loginFlowInProgress = false
+    
+    // Pour simuler des sections non encore implémentées mais prévues
+    @State private var showComingSoon = false
+    @State private var comingSoonTitle = ""
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            List {
-                quickAccess
-                ytPlaylistsSection
-                favoritesSection
-                historySection
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle("Bibliothèque")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape.fill")
+            ZStack(alignment: .top) {
+                background
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.xLarge) {
+                        header
+                        
+                        // Résumé rapide
+                        quickStatsGrid
+                        
+                        // Actions principales
+                        quickActionsGrid
+                        
+                        // Mes Playlists
+                        playlistsSection
+                        
+                        // Récemment écoutés (version compacte car l'historique complet est dans Profil)
+                        recentlyPlayedSection
                     }
-                    .accessibilityLabel("Réglages")
+                    .padding(.top, 12)
+                    .padding(.bottom, 140)
                 }
+                .scrollIndicators(.hidden)
             }
+            .toolbar(.hidden, for: .navigationBar)
             .task { viewModel.load() }
             .onAppear { viewModel.load() }
-            .onReceive(container.authService.$cookies) { _ in
-                viewModel.load()
-            }
             .onReceive(container.authService.$dataSyncId) { _ in
                 viewModel.load()
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                guard newPhase == .active else { return }
-                if loginFlowInProgress, !container.authService.isAuthenticated {
-                    showSettings = true
-                }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsScreen(viewModel: SettingsViewModel(cacheManager: container.playbackCacheManager, authService: container.authService))
             }
             .navigationDestination(for: MusicDestination.self) { destination in
                 destinationView(destination)
@@ -55,137 +52,256 @@ struct LibraryScreen: View {
                 navigationPath.append(destination)
                 playerDestination.wrappedValue = nil
             }
+            .alert(comingSoonTitle, isPresented: $showComingSoon) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Cette fonctionnalité de bibliothèque sera disponible dans une prochaine mise à jour.")
+            }
         }
     }
 
-    private var quickAccess: some View {
-        Section {
-            LibraryTile(
-                systemImage: AppIcons.heartFill,
-                title: "Favoris",
-                subtitle: "\(viewModel.allFavorites.count) morceau\(viewModel.allFavorites.count > 1 ? "x" : "")",
+    private var background: some View {
+        LinearGradient(
+            colors: [
+                Color(.systemBackground),
+                AppColors.accent.opacity(0.08),
+                AppColors.secondaryAccent.opacity(0.06)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Bibliothèque")
+                .font(AppTypography.largeTitle)
+                .foregroundStyle(.primary)
+            Text("Votre musique, vos playlists, vos favoris.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, AppSpacing.medium)
+    }
+
+    private var quickStatsGrid: some View {
+        HStack(spacing: AppSpacing.medium) {
+            statCard(
+                title: "Titres aimés",
+                count: viewModel.allFavorites.count,
+                icon: AppIcons.heartFill,
                 color: AppColors.accent
             )
-            LibraryTile(
-                systemImage: "clock.arrow.circlepath",
-                title: "Historique",
-                subtitle: "\(viewModel.allHistory.count) écoute\(viewModel.allHistory.count > 1 ? "s" : "") récente\(viewModel.allHistory.count > 1 ? "s" : "")",
-                color: AppColors.secondaryAccent
-            )
-            LibraryTile(
-                systemImage: "music.note.list",
-                title: "Playlists locales",
-                subtitle: "\(viewModel.playlists.count) playlist\(viewModel.playlists.count > 1 ? "s" : "")",
+            statCard(
+                title: "Playlists",
+                count: viewModel.playlists.count + viewModel.ytPlaylists.count,
+                icon: "music.note.list",
                 color: .indigo
             )
         }
+        .padding(.horizontal, AppSpacing.medium)
     }
 
-    @ViewBuilder
-    private var ytPlaylistsSection: some View {
-        if !viewModel.ytPlaylists.isEmpty {
-            Section("Mes playlists YouTube Music") {
-                ForEach(viewModel.ytPlaylists) { playlist in
-                    NavigationLink(value: MusicDestination.playlist(playlist.browseId ?? playlist.id)) {
-                        HStack(spacing: 12) {
-                            AsyncImage(url: playlist.thumbnails.first?.url) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                default:
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(.systemGray5))
-                                        .overlay {
-                                            Image(systemName: "music.note.list")
-                                                .foregroundStyle(.secondary)
-                                        }
-                                }
-                            }
-                            .frame(width: 50, height: 50)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(playlist.title)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                                if let trackCount = playlist.trackCount, trackCount > 0 {
-                                    Text("\(trackCount) titres")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                } else if let author = playlist.author {
-                                    Text(author)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
+    private func statCard(title: String, count: Int, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.15))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(color)
                 }
+                Spacer()
+                Text("\(count)")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.primary)
             }
-        } else if viewModel.isLoadingYTLibrary {
-            Section("Mes playlists YouTube Music") {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    Text("Chargement de votre bibliothèque...")
-                        .foregroundStyle(.secondary)
-                }
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+        }
+        .padding(AppSpacing.medium)
+        .appGlass(in: RoundedRectangle(cornerRadius: 24))
+    }
+
+    private var quickActionsGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppSpacing.medium) {
+            quickActionTile(title: "Artistes", icon: "person.2.fill", color: .orange) {
+                navigationPath.append(.libraryArtists)
+            }
+            quickActionTile(title: "Albums", icon: "rectangle.stack.fill", color: .purple) {
+                comingSoonTitle = "Albums"
+                showComingSoon = true
+            }
+            quickActionTile(title: "Téléchargements", icon: "arrow.down.circle.fill", color: .green) {
+                comingSoonTitle = "Téléchargements"
+                showComingSoon = true
+            }
+            quickActionTile(title: "Historique", icon: "clock.fill", color: .blue) {
+                // Raccourci vers la page historique existante (via le playerDestination ou un état de profil)
+                // Pour simplifier ici, on pourrait ouvrir la page historique si on avait une route directe.
+                // Mais l'historique complet est dans Profil. On laisse un placeholder utile.
+                comingSoonTitle = "Historique détaillé"
+                showComingSoon = true
             }
         }
+        .padding(.horizontal, AppSpacing.medium)
     }
 
-    @ViewBuilder
-    private var favoritesSection: some View {
-        Section("Favoris") {
-            if viewModel.allFavorites.isEmpty {
-                Text("Vos morceaux aimés apparaîtront ici.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(viewModel.allFavorites.prefix(20)) { track in
-                    TrackRow(track: track, isFavorite: true) {
-                        player.play(track, queue: viewModel.allFavorites)
-                    } onRadio: {
-                        player.playRadio(from: track)
-                    }
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 12))
+    private func quickActionTile(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.medium) {
+                Image(systemName: icon)
+                    .font(.headline)
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(.horizontal, AppSpacing.medium)
+            .frame(height: 56)
+            .appGlass(in: RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var playlistsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            HStack {
+                Text("Mes playlists")
+                    .font(AppTypography.sectionTitle)
+                Spacer()
+                if !viewModel.ytPlaylists.isEmpty || !viewModel.playlists.isEmpty {
+                    Text("\(viewModel.ytPlaylists.count + viewModel.playlists.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(.secondary.opacity(0.1), in: Capsule())
                 }
-                if viewModel.allFavorites.count > 20 {
-                    Text("et \(viewModel.allFavorites.count - 20) autres morceaux...")
+            }
+            .padding(.horizontal, AppSpacing.medium)
+            
+            if viewModel.isLoadingYTLibrary && viewModel.ytPlaylists.isEmpty {
+                HStack {
+                    ProgressView()
+                        .padding(.trailing, 8)
+                    Text("Chargement...")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+                .padding(.horizontal, AppSpacing.medium)
+            } else if viewModel.ytPlaylists.isEmpty && viewModel.playlists.isEmpty {
+                emptySectionCard(text: "Aucune playlist trouvée.")
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppSpacing.medium) {
+                        // YouTube Playlists
+                        ForEach(viewModel.ytPlaylists) { playlist in
+                            playlistCard(
+                                title: playlist.title,
+                                subtitle: "\(playlist.trackCount ?? 0) titres",
+                                imageURL: playlist.thumbnails.first?.url,
+                                destination: .playlist(playlist.browseId ?? playlist.id),
+                                source: "YT Music"
+                            )
+                        }
+                        
+                        // Local Playlists
+                        ForEach(viewModel.playlists) { playlist in
+                            playlistCard(
+                                title: playlist.title,
+                                subtitle: "Playlist locale",
+                                imageURL: nil, // On pourrait ajouter une mosaïque plus tard
+                                destination: .playlist(playlist.id),
+                                source: "Local"
+                            )
+                        }
+                    }
+                    .padding(.horizontal, AppSpacing.medium)
+                }
             }
         }
     }
 
-    @ViewBuilder
-    private var historySection: some View {
-        Section {
-            if viewModel.allHistory.isEmpty {
-                Text("Vos écoutes apparaîtront ici.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(viewModel.allHistory.prefix(30)) { track in
-                    TrackRow(track: track) {
-                        player.play(track, queue: viewModel.allHistory)
-                    } onRadio: {
-                        player.playRadio(from: track)
-                    }
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 12))
+    private func playlistCard(title: String, subtitle: String, imageURL: URL?, destination: MusicDestination, source: String) -> some View {
+        NavigationLink(value: destination) {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .bottomTrailing) {
+                    ArtworkView(url: imageURL, size: 140, cornerRadius: 16)
+                        .frame(width: 140, height: 140)
+                    
+                    Text(source)
+                        .font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(8)
                 }
-            }
-            if !viewModel.history.isEmpty {
-                Button(role: .destructive) {
-                    viewModel.clearHistory()
-                } label: {
-                    Label("Effacer l'historique local", systemImage: "trash")
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+                .frame(width: 140, alignment: .leading)
             }
-        } header: {
-            Text("Écoutés récemment")
         }
+        .buttonStyle(.plain)
+    }
+
+    private var recentlyPlayedSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            Text("Écoutés récemment")
+                .font(AppTypography.sectionTitle)
+                .padding(.horizontal, AppSpacing.medium)
+            
+            if viewModel.allHistory.isEmpty {
+                emptySectionCard(text: "Votre historique apparaîtra ici.")
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(viewModel.allHistory.prefix(5)) { track in
+                        TrackRow(track: track) {
+                            player.play(track, queue: viewModel.allHistory)
+                        } onRadio: {
+                            player.playRadio(from: track)
+                        }
+                        .padding(.horizontal, AppSpacing.medium)
+                        .padding(.vertical, 8)
+                        
+                        if track.id != viewModel.allHistory.prefix(5).last?.id {
+                            Divider()
+                                .padding(.leading, 80)
+                                .opacity(0.5)
+                        }
+                    }
+                }
+                .appGlass(in: RoundedRectangle(cornerRadius: 24))
+                .padding(.horizontal, AppSpacing.medium)
+            }
+        }
+    }
+
+    private func emptySectionCard(text: String) -> some View {
+        HStack {
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(AppSpacing.medium)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, AppSpacing.medium)
     }
 
     @ViewBuilder
@@ -197,31 +313,11 @@ struct LibraryScreen: View {
             ArtistDetailScreen(viewModel: ArtistDetailViewModel(client: container.youTubeMusicClient, browseId: browseId))
         case .playlist(let browseId):
             PlaylistDetailScreen(viewModel: PlaylistDetailViewModel(client: container.youTubeMusicClient, browseId: browseId))
+        case .libraryArtists:
+            LibraryArtistsView()
+        case .libraryArtist(let name):
+            LibraryArtistDetailView(artistName: name)
         }
     }
 }
 
-private struct LibraryTile: View {
-    var systemImage: String
-    var title: String
-    var subtitle: String
-    var color: Color
-
-    var body: some View {
-        HStack(spacing: AppSpacing.medium) {
-            Image(systemName: systemImage)
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: 42, height: 42)
-                .background(color, in: RoundedRectangle(cornerRadius: AppRadius.small, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 5)
-    }
-}

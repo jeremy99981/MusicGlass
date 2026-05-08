@@ -34,6 +34,10 @@ struct SearchScreen: View {
                     ArtistDetailScreen(viewModel: ArtistDetailViewModel(client: container.youTubeMusicClient, browseId: browseId))
                 case .playlist(let browseId):
                     PlaylistDetailScreen(viewModel: PlaylistDetailViewModel(client: container.youTubeMusicClient, browseId: browseId))
+                case .libraryArtists:
+                    LibraryArtistsView()
+                case .libraryArtist(let name):
+                    LibraryArtistDetailView(artistName: name)
                 }
             }
             .onChange(of: playerDestination.wrappedValue) { _, destination in

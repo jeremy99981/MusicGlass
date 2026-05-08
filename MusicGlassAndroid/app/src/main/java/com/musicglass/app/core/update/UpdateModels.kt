@@ -40,12 +40,21 @@ data class UpdateInfo(
 }
 
 /**
- * Compares two semver-style version strings (e.g. "1.2.0" vs "1.1.0").
+ * Compares two semver-style version strings (e.g. "v1.2.0" vs "1.1.0").
  * Returns > 0 if v1 > v2, 0 if equal, < 0 if v1 < v2.
+ * Robustly handles "v" prefix and ignores non-numeric suffixes (like -beta).
  */
 fun compareVersions(v1: String, v2: String): Int {
-    val parts1 = v1.removePrefix("v").split(".").map { it.toIntOrNull() ?: 0 }
-    val parts2 = v2.removePrefix("v").split(".").map { it.toIntOrNull() ?: 0 }
+    fun String.toVersionParts(): List<Int> {
+        return this.removePrefix("v")
+            .split("-")[0] // Ignore -beta, -rc etc.
+            .split(".")
+            .map { it.toIntOrNull() ?: 0 }
+    }
+
+    val parts1 = v1.toVersionParts()
+    val parts2 = v2.toVersionParts()
+    
     val maxLen = maxOf(parts1.size, parts2.size)
     for (i in 0 until maxLen) {
         val p1 = parts1.getOrElse(i) { 0 }
