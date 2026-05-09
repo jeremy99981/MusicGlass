@@ -124,9 +124,14 @@ struct YouTubeMusicClient: YouTubeMusicClientProtocol {
         var enriched = playlist
         if enriched.tracks.isEmpty, let playlistId = browseId.musicGlassPlainPlaylistId,
            let queueValue = try? await innerTubeClient.playlistQueue(playlistId: playlistId) {
+            var seenTrackIds = Set<String>()
             let tracks = mapper.mapNextTracks(from: queueValue)
                 .filter(\.musicGlassIsLikelyMusicTrack)
-                .uniquedBy(\.id)
+                .filter { track in
+                    guard !seenTrackIds.contains(track.id) else { return false }
+                    seenTrackIds.insert(track.id)
+                    return true
+                }
             if !tracks.isEmpty {
                 enriched.tracks = tracks
                 enriched.trackCount = tracks.count
@@ -499,5 +504,246 @@ private extension String {
             contains("clip officiel") ||
             contains("karaoke") ||
             contains("live stream")
+    }
+}
+
+enum MusicAIIntentType: String, Codable {
+    case playTrack, playPopularTrack, playLatestTrack
+    case playAlbum, playLatestAlbum, playPopularAlbum
+    case openAlbum, listAlbums, listTracks
+    case playArtistMix, playPlaylist, playLikedSongs
+    case playHistory, playMood, searchOnly, unknown
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = MusicAIIntentType(rawValue: rawValue) ?? .unknown
+    }
+}
+
+struct MusicAIIntent: Codable, Hashable {
+    let type: MusicAIIntentType
+    let artistName: String?
+    let trackTitle: String?
+    let albumTitle: String?
+    let playlistName: String?
+    let mood: String?
+    let language: String?
+    let confidence: Double
+    let shouldOpenFullPlayer: Bool
+    let requiresUserChoice: Bool
+    let clarificationQuestion: String?
+}
+
+enum DeepSeekError: Error, LocalizedError {
+    case invalidURL, noResponse, decodeError, apiError(String), invalidKey
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL: return "URL DeepSeek invalide."
+        case .noResponse: return "Aucune réponse de DeepSeek."
+        case .decodeError: return "Je n'ai pas pu comprendre la réponse de l'IA. Réessayez ou reformulez."
+        case .apiError(let msg): return "Erreur API DeepSeek : \(msg)"
+        case .invalidKey: return "Clé API DeepSeek non configurée."
+        }
+    }
+}
+
+@MainActor
+final class DeepSeekMusicIntentService {
+    private let apiKey = "sk-d7fa95872d1e4f3187f661e9459ac139"
+    private let endpoint = "https://api.deepseek.com/chat/completions"
+    
+    func parseIntent(from text: String) async throws -> MusicAIIntent {
+        guard !apiKey.isEmpty && !apiKey.contains("PLACEHOLDER") else { throw DeepSeekError.invalidKey }
+        guard let url = URL(string: endpoint) else { throw DeepSeekError.invalidURL }
+        
+        let systemPrompt = """
+        Tu es un parseur d'intentions musicales pour MusicGlass.
+        Réponds UNIQUEMENT avec un objet JSON valide. Aucun texte avant ou après. Aucun bloc ```json.
+        
+        Tu dois DIFFÉRENCIER :
+        1. Demander une LISTE (ex: "album Gazo", "montre les albums de...") -> type: listAlbums, requiresUserChoice: true.
+        2. Demander une LECTURE directe (ex: "lance", "joue", "lis", "mets") -> type: playAlbum/playTrack, requiresUserChoice: false.
+        3. Demander une OUVERTURE (ex: "ouvre") -> type: openAlbum, requiresUserChoice: false.
+        
+        Règles :
+        - "album [Artiste]" sans verbe d'action = listAlbums.
+        - "dernier album [Artiste]" sans verbe = openAlbum ou listAlbums (si ambigu).
+        - "lance le dernier album" = playLatestAlbum.
+        
+        Champs JSON : type, artistName, trackTitle, albumTitle, playlistName, mood, language, confidence, shouldOpenFullPlayer, requiresUserChoice, clarificationQuestion.
+        Types : playTrack, playPopularTrack, playLatestTrack, playAlbum, playLatestAlbum, playPopularAlbum, openAlbum, listAlbums, listTracks, playArtistMix, playPlaylist, playLikedSongs, playHistory, playMood, searchOnly, unknown.
+        """
+        
+        let body: [String: Any] = [
+            "model": "deepseek-chat",
+            "messages": [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": text]
+            ],
+            "response_format": ["type": "json_object"],
+            "temperature": 0.1
+        ]
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw DeepSeekError.noResponse }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMsg = String(data: data, encoding: .utf8) ?? "Erreur \(httpResponse.statusCode)"
+            throw DeepSeekError.apiError(errorMsg)
+        }
+        
+        struct DSResp: Codable { struct Choice: Codable { struct Msg: Codable { let content: String }; let message: Msg }; let choices: [Choice] }
+        let dsResp = try JSONDecoder().decode(DSResp.self, from: data)
+        guard let rawContent = dsResp.choices.first?.message.content else { throw DeepSeekError.decodeError }
+        
+        let cleanedContent = extractJSON(from: rawContent)
+        guard let jsonData = cleanedContent.data(using: .utf8) else { throw DeepSeekError.decodeError }
+        
+        do {
+            let intent = try JSONDecoder().decode(MusicAIIntent.self, from: jsonData)
+            print("🎙️ [DeepSeek] Intent: \(intent.type) | Action: \(intent.requiresUserChoice ? "List" : "Direct")")
+            return intent
+        } catch {
+            print("🎙️ [DeepSeek] JSON Decode Error: \(error)")
+            throw DeepSeekError.decodeError
+        }
+    }
+    
+    private func extractJSON(from text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
+        cleaned = cleaned.replacingOccurrences(of: "```", with: "")
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if let start = cleaned.firstIndex(of: "{"),
+           let end = cleaned.lastIndex(of: "}"),
+           start <= end {
+            return String(cleaned[start...end])
+        }
+        return cleaned
+    }
+}
+
+enum MusicAIResolution {
+    case playableTrack(Track, [Track])
+    case playableAlbum(Album, [Track])
+    case playablePlaylist(Playlist, [Track])
+    case playableRadio(Track)
+    case albumList([Album])
+    case openSearch(String)
+    case needsClarification(String)
+    case failure(String)
+}
+
+@MainActor
+final class MusicAIResolver {
+    private let client: YouTubeMusicClientProtocol
+    init(client: YouTubeMusicClientProtocol) { self.client = client }
+    
+    func resolve(intent: MusicAIIntent) async throws -> MusicAIResolution {
+        guard intent.confidence >= 0.5 else { return .needsClarification(intent.clarificationQuestion ?? "Précisez votre demande.") }
+        
+        switch intent.type {
+        case .playTrack: return try await resolveTrack(intent)
+        case .playPopularTrack: return try await resolvePopularTrack(intent)
+        case .playLatestTrack: return try await resolveLatestTrack(intent)
+        case .playAlbum: return try await resolveAlbum(intent)
+        case .playLatestAlbum: return try await resolveLatestAlbum(intent)
+        case .openAlbum: return try await resolveAlbum(intent, openOnly: true)
+        case .listAlbums: return try await resolveListAlbums(intent)
+        case .playPlaylist: return try await resolvePlaylist(intent)
+        case .playLikedSongs: return try await resolveLikedSongs()
+        case .playArtistMix: return try await resolveArtistMix(intent)
+        default: return .openSearch(String([intent.artistName, intent.trackTitle].compactMap{$0}.joined(separator: " ")))
+        }
+    }
+    
+    private func resolveTrack(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = [intent.trackTitle, intent.artistName].compactMap{$0}.joined(separator: " ")
+        let res = try await client.search(query: q, filter: .songs)
+        return res.tracks.isEmpty ? .failure("Titre non trouvé") : .playableTrack(res.tracks[0], res.tracks)
+    }
+    
+    private func resolvePopularTrack(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = "\(intent.artistName ?? "") meilleurs titres"
+        let res = try await client.search(query: q, filter: .songs)
+        return res.tracks.isEmpty ? .failure("Titres populaires non trouvés") : .playableTrack(res.tracks[0], Array(res.tracks.prefix(10)))
+    }
+    
+    private func resolveLatestTrack(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = "\(intent.artistName ?? "") nouveau single"
+        let res = try await client.search(query: q, filter: .songs)
+        return res.tracks.isEmpty ? .failure("Nouveau titre non trouvé") : .playableTrack(res.tracks[0], res.tracks)
+    }
+    
+    private func resolveAlbum(_ intent: MusicAIIntent, openOnly: Bool = false) async throws -> MusicAIResolution {
+        let q = [intent.albumTitle, intent.artistName].compactMap{$0}.joined(separator: " ")
+        let res = try await client.search(query: q, filter: .albums)
+        if let id = res.albums.first?.browseId {
+            let alb = try await client.getAlbum(browseId: id)
+            return .playableAlbum(alb, alb.tracks)
+        }
+        return .failure("Album non trouvé")
+    }
+    
+    private func resolveLatestAlbum(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let res = try await client.search(query: intent.artistName ?? "", filter: .artists)
+        if let artistId = res.artists.first?.browseId {
+            let page = try await client.getArtist(browseId: artistId)
+            let allAlbums = (page.albums + page.singles).filter { $0.browseId != nil }
+            if let latest = allAlbums.first { 
+                let alb = try await client.getAlbum(browseId: latest.browseId!)
+                if !alb.tracks.isEmpty {
+                    return .playableAlbum(alb, alb.tracks)
+                }
+            }
+        }
+        return .failure("Dernier album non trouvé ou vide")
+    }
+    
+    private func resolveListAlbums(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let res = try await client.search(query: intent.artistName ?? "", filter: .artists)
+        if let artistId = res.artists.first?.browseId {
+            let page = try await client.getArtist(browseId: artistId)
+            var seenIds = Set<String>()
+            let allAlbums = (page.albums + page.singles)
+                .filter { album in
+                    guard let bid = album.browseId, !seenIds.contains(bid) else { return false }
+                    seenIds.insert(bid)
+                    return true
+                }
+            return allAlbums.isEmpty ? .failure("Aucun album trouvé") : .albumList(allAlbums)
+        }
+        return .failure("Artiste non trouvé")
+    }
+    
+    private func resolvePlaylist(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let res = try await client.search(query: intent.playlistName ?? "", filter: .playlists)
+        if let id = res.playlists.first?.browseId {
+            let pl = try await client.getPlaylist(browseId: id)
+            return .playablePlaylist(pl, pl.tracks)
+        }
+        return .failure("Playlist non trouvée")
+    }
+    
+    private func resolveLikedSongs() async throws -> MusicAIResolution {
+        let tracks = try await client.getLikedSongs()
+        return tracks.isEmpty ? .failure("Favoris vides") : .playableTrack(tracks[0], tracks)
+    }
+    
+    private func resolveArtistMix(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let res = try await client.search(query: intent.artistName ?? "", filter: .artists)
+        if let id = res.artists.first?.browseId {
+            let page = try await client.getArtist(browseId: id)
+            if let first = page.topTracks.first { return .playableRadio(first) }
+        }
+        return .failure("Mix artiste impossible")
     }
 }

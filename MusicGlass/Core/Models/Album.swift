@@ -32,6 +32,6 @@ struct Album: Identifiable, Codable, Hashable, Sendable {
     }
 
     var bestThumbnailURL: URL? {
-        thumbnails.sorted { ($0.width ?? 0) > ($1.width ?? 0) }.first?.url
+        thumbnails.sorted(by: { ($0.width ?? 0) > ($1.width ?? 0) }).first?.url
     }
 }

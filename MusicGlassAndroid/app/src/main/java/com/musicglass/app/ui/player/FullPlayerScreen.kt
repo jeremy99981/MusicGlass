@@ -175,10 +175,11 @@ private fun FullPlayerScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF111A1A))
             .graphicsLayer {
                 translationY = dragOffsetPx.coerceAtLeast(0f)
+                clip = true
             }
+            .background(Color(0xFF111A1A))
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onVerticalDrag = { _, dragAmount ->
@@ -197,29 +198,30 @@ private fun FullPlayerScreen(
                 )
             }
     ) {
-        val isVeryCompact = maxHeight < 700.dp
-        val isCompact = maxHeight < 820.dp
-        val horizontalPadding = if (isVeryCompact) 22.dp else if (isCompact) 26.dp else 30.dp
-        val topContentPadding = if (isVeryCompact) 6.dp else 10.dp
-        val bottomContentPadding = if (isVeryCompact) 10.dp else 18.dp
-        val handleSpacer = if (isVeryCompact) 2.dp else 8.dp
-        val artworkSpacer = if (isVeryCompact) 10.dp else if (isCompact) 14.dp else 22.dp
-        val sliderSpacer = if (isVeryCompact) 6.dp else 12.dp
-        val controlsTopSpacer = if (isVeryCompact) 8.dp else if (isCompact) 14.dp else 0.dp
-        val controlsBottomSpacer = if (isVeryCompact) 8.dp else if (isCompact) 14.dp else 28.dp
-        val bottomActionsSpacer = if (isVeryCompact) 8.dp else 16.dp
-        val playButtonSize = if (isVeryCompact) 84.dp else if (isCompact) 90.dp else 96.dp
-        val playIconSize = if (isVeryCompact) 46.dp else if (isCompact) 50.dp else 52.dp
-        val transportButtonSize = if (isVeryCompact) 64.dp else if (isCompact) 68.dp else 72.dp
-        val transportIconSize = if (isVeryCompact) 34.dp else 36.dp
-        val utilityButtonSize = 48.dp
-        val circleButtonSize = 54.dp
-        val showVolumeControls = !isVeryCompact
+        val isUltraCompact = maxHeight < 680.dp
+        val isVeryCompact = maxHeight < 780.dp
+        val isCompact = maxHeight < 880.dp
+        val horizontalPadding = if (isUltraCompact) 20.dp else if (isVeryCompact) 22.dp else if (isCompact) 26.dp else 30.dp
+        val topContentPadding = if (isUltraCompact) 4.dp else if (isVeryCompact) 6.dp else 8.dp
+        val bottomContentPadding = if (isUltraCompact) 6.dp else if (isVeryCompact) 10.dp else 12.dp
+        val handleSpacer = if (isUltraCompact) 0.dp else if (isVeryCompact) 2.dp else 6.dp
+        val artworkSpacer = if (isUltraCompact) 6.dp else if (isVeryCompact) 8.dp else if (isCompact) 12.dp else 16.dp
+        val sliderSpacer = if (isUltraCompact) 4.dp else if (isVeryCompact) 6.dp else 10.dp
+        val controlsTopSpacer = if (isUltraCompact) 4.dp else if (isVeryCompact) 6.dp else if (isCompact) 10.dp else 0.dp
+        val controlsBottomSpacer = if (isUltraCompact) 4.dp else if (isVeryCompact) 6.dp else if (isCompact) 12.dp else 22.dp
+        val bottomActionsSpacer = if (isUltraCompact) 4.dp else if (isVeryCompact) 6.dp else 12.dp
+        val playButtonSize = if (isUltraCompact) 78.dp else if (isVeryCompact) 84.dp else if (isCompact) 90.dp else 96.dp
+        val playIconSize = if (isUltraCompact) 42.dp else if (isVeryCompact) 46.dp else if (isCompact) 50.dp else 52.dp
+        val transportButtonSize = if (isUltraCompact) 60.dp else if (isVeryCompact) 64.dp else if (isCompact) 68.dp else 72.dp
+        val transportIconSize = if (isUltraCompact) 32.dp else if (isVeryCompact) 34.dp else 36.dp
+        val utilityButtonSize = if (isUltraCompact) 44.dp else 48.dp
+        val circleButtonSize = if (isUltraCompact) 48.dp else 54.dp
+        val showVolumeControls = !isUltraCompact
         val artworkSize = minOf(
             maxWidth - (horizontalPadding * 2f),
-            maxHeight * if (isVeryCompact) 0.29f else if (isCompact) 0.34f else 0.40f,
-            if (isVeryCompact) 230.dp else if (isCompact) 300.dp else 360.dp
-        ).coerceAtLeast(if (isVeryCompact) 170.dp else 230.dp)
+            maxHeight * if (isUltraCompact) 0.25f else if (isVeryCompact) 0.28f else if (isCompact) 0.32f else 0.38f,
+            if (isUltraCompact) 190.dp else if (isVeryCompact) 220.dp else if (isCompact) 280.dp else 340.dp
+        ).coerceAtLeast(if (isUltraCompact) 130.dp else 160.dp)
 
         if (artworkUrl != null) {
             AsyncImage(
@@ -299,7 +301,7 @@ private fun FullPlayerScreen(
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = if (isVeryCompact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
                         maxLines = 2,
@@ -307,7 +309,7 @@ private fun FullPlayerScreen(
                     )
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = if (isVeryCompact) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium,
                         color = Color.White.copy(alpha = 0.76f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -327,7 +329,7 @@ private fun FullPlayerScreen(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(if (isVeryCompact) 6.dp else 10.dp)) {
                     FrostedCircleButton(onClick = {}, size = circleButtonSize) {
                         Icon(Icons.Filled.FavoriteBorder, contentDescription = "Favori", tint = Color.White)
                     }
@@ -375,8 +377,9 @@ private fun FullPlayerScreen(
                 )
             }
 
+            val middleSpacerHeight = if (isUltraCompact) 2.dp else if (isVeryCompact) 4.dp else if (isCompact) 10.dp else 20.dp
             if (isCompact) {
-                Spacer(modifier = Modifier.height(controlsTopSpacer))
+                Spacer(modifier = Modifier.height(middleSpacerHeight))
             } else {
                 Spacer(modifier = Modifier.weight(1f))
             }
@@ -411,7 +414,7 @@ private fun FullPlayerScreen(
                         CircularProgressIndicator(
                             color = Color.White,
                             strokeWidth = 3.dp,
-                            modifier = Modifier.size(if (isVeryCompact) 30.dp else 34.dp)
+                            modifier = Modifier.size(if (isUltraCompact) 26.dp else if (isVeryCompact) 30.dp else 34.dp)
                         )
                     } else {
                         Icon(
@@ -522,6 +525,7 @@ private fun FullPlayerScreen(
                     Icon(Icons.Filled.FormatListBulleted, contentDescription = "File d'attente", tint = Color.White)
                 }
             }
+            Spacer(modifier = Modifier.height(if (isUltraCompact) 4.dp else 8.dp))
         }
         
         if (showQueue) {

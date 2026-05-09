@@ -60,3 +60,4 @@ final class SearchViewModel: ObservableObject {
         isLoading = false
     }
 }
+
