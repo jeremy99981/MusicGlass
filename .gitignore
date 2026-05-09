@@ -86,13 +86,8 @@ iOSInjectionProject/
 # OS X
 .DS_Store
 
-# Android / Gradle
-.gradle/
-**/.gradle/
-local.properties
-**/local.properties
-.idea/
-**/.idea/
+# Projet Android (a son propre dépôt : MusicGlass-Android)
+MusicGlassAndroid/
 
 # Temporary files
 *.swp
