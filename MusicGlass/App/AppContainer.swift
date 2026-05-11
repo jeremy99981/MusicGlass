@@ -13,6 +13,7 @@ final class AppContainer: ObservableObject {
     let cacheRepository: CacheRepository
     let playbackCacheManager: PlaybackCacheManager
     let authService: AuthService
+    let musicGlassAuthService: MusicGlassAuthService
     let playerEngine: AVPlayerEngine
 
     private init(
@@ -27,6 +28,7 @@ final class AppContainer: ObservableObject {
         cacheRepository: CacheRepository,
         playbackCacheManager: PlaybackCacheManager,
         authService: AuthService,
+        musicGlassAuthService: MusicGlassAuthService,
         playerEngine: AVPlayerEngine
     ) {
         self.httpClient = httpClient
@@ -40,6 +42,7 @@ final class AppContainer: ObservableObject {
         self.cacheRepository = cacheRepository
         self.playbackCacheManager = playbackCacheManager
         self.authService = authService
+        self.musicGlassAuthService = musicGlassAuthService
         self.playerEngine = playerEngine
     }
 
@@ -61,6 +64,7 @@ final class AppContainer: ObservableObject {
         let playlistRepository = PlaylistRepository(database: localDatabase)
         let cacheRepository = CacheRepository(database: localDatabase)
         let playbackCacheManager = PlaybackCacheManager()
+        let musicGlassAuthService = MusicGlassAuthService(httpClient: httpClient)
         let nowPlayingManager = NowPlayingManager()
         let remoteCommandCenterManager = RemoteCommandCenterManager()
         let audioSessionManager = AudioSessionManager()
@@ -109,6 +113,7 @@ final class AppContainer: ObservableObject {
             cacheRepository: cacheRepository,
             playbackCacheManager: playbackCacheManager,
             authService: authService,
+            musicGlassAuthService: musicGlassAuthService,
             playerEngine: playerEngine
         )
     }

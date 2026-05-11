@@ -512,7 +512,7 @@ final class SpeechVoiceService: NSObject, ObservableObject {
     override init() {
         super.init()
         // Guard: check input availability (simulator has no hardware microphone)
-        guard audioEngine.isInputAvailable else {
+        guard AVAudioSession.sharedInstance().isInputAvailable else {
             self.speechRecognizer = nil
             return
         }
@@ -542,7 +542,7 @@ final class SpeechVoiceService: NSObject, ObservableObject {
         stopListening()
 
         // Guard: no input hardware available (simulator)
-        guard audioEngine.isInputAvailable else {
+        guard AVAudioSession.sharedInstance().isInputAvailable else {
             throw NSError(domain: "SpeechVoiceService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Aucun microphone disponible sur cet appareil."])
         }
 
@@ -612,7 +612,7 @@ final class SpeechVoiceService: NSObject, ObservableObject {
 
     func stopListening() {
         // Guard: only touch audio engine if input is available
-        guard audioEngine.isInputAvailable else { return }
+        guard AVAudioSession.sharedInstance().isInputAvailable else { return }
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)

@@ -320,7 +320,7 @@ struct ProfileMenuView: View {
     @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -328,36 +328,41 @@ struct ProfileMenuView: View {
                     // Header Card
                     profileHeader
                         .padding(.top, AppSpacing.medium)
-                    
+
                     // Sections
                     VStack(spacing: AppSpacing.large) {
                         ProfileSection(title: "Compte") {
                             NavigationLink(value: ProfileDestination.auth) {
-                                ProfileRow(icon: "person.crop.circle", title: "Connecter un compte", subtitle: "Compte MusicGlass, profil et préférences", isDisabled: false)
+                                ProfileRow(
+                                    icon: "person.crop.circle",
+                                    title: container.musicGlassAuthService.isAuthenticated ? "Gérer mon compte" : "Connecter un compte",
+                                    subtitle: container.musicGlassAuthService.isAuthenticated ? "Session MusicGlass active" : "Compte MusicGlass, profil et préférences",
+                                    isDisabled: false
+                                )
                             }
                             .buttonStyle(.plain)
-                            
+
                             ProfileRow(icon: "gearshape", title: "Préférences du compte", isDisabled: true)
                         }
-                        
+
                         YouTubeMusicProfileSection(authService: container.authService)
-                        
+
                         ProfileSection(title: "Application") {
                             ProfileRow(icon: "music.note", title: "Qualité audio", subtitle: "Élevée (256kbps)", isDisabled: true)
                             ProfileRow(icon: "play.circle", title: "Lecture et confort", isDisabled: true)
                             ProfileRow(icon: "bell", title: "Notifications", isDisabled: true)
                         }
-                        
+
                         ProfileSection(title: "Données") {
                             NavigationLink(value: ProfileDestination.history) {
                                 ProfileRow(icon: "clock.arrow.circlepath", title: "Historique d'écoute", isDisabled: false)
                             }
                             .buttonStyle(.plain)
-                            
+
                             ProfileRow(icon: "lock.shield", title: "Confidentialité", isDisabled: true)
                             ProfileRow(icon: "trash", title: "Vider le cache", isDisabled: true)
                         }
-                        
+
                         ProfileSection(title: "À propos") {
                             ProfileRow(icon: "info.circle", title: "Version de l'app", subtitle: "0.0.4 (4)", isDisabled: true)
                         }
@@ -385,16 +390,17 @@ struct ProfileMenuView: View {
             .navigationDestination(for: ProfileDestination.self) { destination in
                 switch destination {
                 case .auth:
-                    ProfileAuthView()
+                    ProfileAuthView(authService: container.musicGlassAuthService)
                 case .history:
                     ListeningHistoryView(dismissEntireSheet: { dismiss() })
                 }
             }
         }
     }
-    
+
     private var profileHeader: some View {
         VStack(spacing: AppSpacing.medium) {
+            let account = container.musicGlassAuthService.session?.user
             ZStack {
                 Circle()
                     .fill(
@@ -413,11 +419,11 @@ struct ProfileMenuView: View {
             }
             .frame(width: 90, height: 90)
             .shadow(color: .black.opacity(0.15), radius: 12, y: 5)
-            
+
             VStack(spacing: 4) {
-                Text("Invité")
+                Text(account?.name ?? "Invité")
                     .font(.title2.weight(.bold))
-                Text("Compte local non connecté")
+                Text(account?.email ?? "Compte local non connecté")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -434,7 +440,7 @@ private struct YouTubeMusicProfileSection: View {
     @State private var loginStore: LoginWebViewStore?
     @State private var showingLogoutConfirmation = false
     @AppStorage("musicglass.loginFlowInProgress") private var loginFlowInProgress = false
-    
+
     var body: some View {
         ProfileSection(title: "YouTube Music") {
             if authService.isAuthenticated {
@@ -446,7 +452,7 @@ private struct YouTubeMusicProfileSection: View {
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(AppColors.accent)
                             .frame(width: 24)
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text("YouTube Music connecté")
                                 .font(.body)
@@ -455,9 +461,9 @@ private struct YouTubeMusicProfileSection: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        
+
                         Spacer()
-                        
+
                         Text("Déconnecter")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.red)
@@ -532,14 +538,14 @@ private struct YouTubeMusicProfileSection: View {
 private struct ProfileSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.small) {
             Text(title.uppercased())
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.leading, AppSpacing.medium)
-            
+
             VStack(spacing: 0) {
                 content
             }
@@ -553,14 +559,14 @@ private struct ProfileRow: View {
     let title: String
     var subtitle: String? = nil
     var isDisabled: Bool = false
-    
+
     var body: some View {
         HStack(spacing: AppSpacing.medium) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(AppColors.accent)
                 .frame(width: 24)
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.body)
@@ -570,9 +576,9 @@ private struct ProfileRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             if !isDisabled {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
@@ -595,7 +601,7 @@ struct ListeningHistoryView: View {
     @State private var isLoading = false
     @State private var showClearConfirm = false
     @State private var showImportComingSoon = false
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Filter
@@ -607,7 +613,7 @@ struct ListeningHistoryView: View {
             }
             .padding(.horizontal, AppSpacing.medium)
             .padding(.vertical, AppSpacing.small)
-            
+
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -684,24 +690,24 @@ struct ListeningHistoryView: View {
             Text("Vous pourrez bientôt importer votre historique YouTube Music via un export Google Takeout.")
         }
     }
-    
+
     private var emptyState: some View {
         VStack(spacing: AppSpacing.medium) {
             Image(systemName: selectedSource == "youtubeMusic" ? "arrow.down.circle" : "clock")
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
-            
+
             VStack(spacing: 8) {
                 Text(selectedSource == "youtubeMusic" ? "Historique non importé" : "Aucun historique")
                     .font(.title3.weight(.bold))
-                
+
                 Text(selectedSource == "youtubeMusic" ? "L'import de l'historique externe nécessite une future mise à jour." : "Les morceaux que vous écoutez apparaîtront ici.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, AppSpacing.xLarge)
             }
-            
+
             if selectedSource == "youtubeMusic" {
                 Button {
                     showImportComingSoon = true
@@ -718,7 +724,7 @@ struct ListeningHistoryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     private func filterChip(title: String, source: String?) -> some View {
         Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -738,7 +744,7 @@ struct ListeningHistoryView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private func loadHistory() {
         isLoading = true
         Task {
@@ -751,7 +757,7 @@ struct ListeningHistoryView: View {
             isLoading = false
         }
     }
-    
+
     private func delete(_ track: Track) {
         Task {
             try? container.historyRepository.delete(track)
@@ -760,7 +766,7 @@ struct ListeningHistoryView: View {
             }
         }
     }
-    
+
     private func clearHistory() {
         Task {
             try? container.historyRepository.clear()
@@ -773,24 +779,23 @@ struct ListeningHistoryView: View {
 
 struct ProfileAuthView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject var authService: MusicGlassAuthService
     @State private var authMode: AuthMode = .signIn
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var displayName = ""
-    @State private var isLoading = false
-    @State private var showComingSoon = false
-    
+    @State private var localError: String?
+
     enum AuthMode {
         case signIn, signUp
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: AppSpacing.xLarge) {
-                // Header
                 VStack(spacing: AppSpacing.small) {
-                    Text(authMode == .signIn ? "Connexion" : "Créer un compte")
+                    Text(authService.isAuthenticated ? "Compte connecté" : (authMode == .signIn ? "Connexion" : "Créer un compte"))
                         .font(.largeTitle.weight(.bold))
                     Text("Retrouvez vos playlists et votre historique sur tous vos appareils.")
                         .font(.subheadline)
@@ -799,116 +804,125 @@ struct ProfileAuthView: View {
                         .padding(.horizontal, AppSpacing.large)
                 }
                 .padding(.top, AppSpacing.large)
-                
-                // Mode Selector
-                Picker("Mode", selection: $authMode) {
-                    Text("Connexion").tag(AuthMode.signIn)
-                    Text("Inscription").tag(AuthMode.signUp)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, AppSpacing.medium)
-                
-                // Form
-                VStack(spacing: AppSpacing.medium) {
-                    if authMode == .signUp {
-                        authField(title: "Nom complet", text: $displayName, icon: "person", contentType: .name)
-                    }
-                    
-                    authField(title: "Adresse e-mail", text: $email, icon: "envelope", contentType: .emailAddress, keyboardType: .emailAddress)
-                    
-                    authSecureField(title: "Mot de passe", text: $password)
-                    
-                    if authMode == .signUp {
-                        authSecureField(title: "Confirmer le mot de passe", text: $confirmPassword)
-                    }
-                    
-                    if authMode == .signIn {
-                        Button("Mot de passe oublié ?") {
-                            showComingSoon = true
-                        }
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(AppColors.accent)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                }
-                .padding(AppSpacing.medium)
-                .appGlass(in: RoundedRectangle(cornerRadius: 24))
-                .padding(.horizontal, AppSpacing.medium)
-                
-                // Actions
-                VStack(spacing: AppSpacing.medium) {
-                    Button {
-                        handleAuth()
-                    } label: {
-                        HStack {
-                            if isLoading {
-                                ProgressView()
-                                    .tint(.white)
-                                    .padding(.trailing, 8)
-                            }
-                            Text(authMode == .signIn ? "Se connecter" : "Créer mon compte")
-                                .font(.headline)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(
-                            LinearGradient(
-                                colors: [AppColors.accent, AppColors.secondaryAccent],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 16)
-                        )
-                        .foregroundStyle(.white)
-                    }
-                    .disabled(isLoading)
-                    
-                    Text("Ou continuer avec")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    Button {
-                        showComingSoon = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "apple.logo")
-                                .font(.title3)
-                            Text("Continuer avec Apple")
-                                .font(.headline)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(Color.primary, in: RoundedRectangle(cornerRadius: 16))
-                        .foregroundStyle(Color(.systemBackground))
-                    }
-                }
-                .padding(.horizontal, AppSpacing.medium)
-                
-                if authMode == .signUp {
-                    Text("En créant un compte, vous acceptez nos Conditions d'utilisation et notre Politique de confidentialité.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppSpacing.xLarge)
+
+                if let session = authService.session {
+                    connectedCard(session: session)
+                        .padding(.horizontal, AppSpacing.medium)
+                } else {
+                    formSection
+                    actionSection
                 }
             }
             .padding(.bottom, AppSpacing.xLarge)
         }
         .background(Color(.systemGroupedBackground).opacity(0.3).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Bientôt disponible", isPresented: $showComingSoon) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Le système d'authentification sera activé dans une prochaine mise à jour.")
+    }
+
+    private var formSection: some View {
+        VStack(spacing: AppSpacing.medium) {
+            Picker("Mode", selection: $authMode) {
+                Text("Connexion").tag(AuthMode.signIn)
+                Text("Inscription").tag(AuthMode.signUp)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, AppSpacing.medium)
+
+            VStack(spacing: AppSpacing.medium) {
+                if authMode == .signUp {
+                    authField(title: "Nom complet", text: $displayName, icon: "person", contentType: .name)
+                }
+                authField(title: "Adresse e-mail", text: $email, icon: "envelope", contentType: .emailAddress, keyboardType: .emailAddress)
+                authSecureField(title: "Mot de passe", text: $password)
+                if authMode == .signUp {
+                    authSecureField(title: "Confirmer le mot de passe", text: $confirmPassword)
+                }
+            }
+            .padding(AppSpacing.medium)
+            .appGlass(in: RoundedRectangle(cornerRadius: 24))
+            .padding(.horizontal, AppSpacing.medium)
         }
     }
-    
+
+    private var actionSection: some View {
+        VStack(spacing: AppSpacing.medium) {
+            if let error = localError ?? authService.lastErrorMessage {
+                Text(error)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppSpacing.medium)
+            }
+
+            Button {
+                Task { await handleAuth() }
+            } label: {
+                HStack {
+                    if authService.isLoading {
+                        ProgressView()
+                            .tint(.white)
+                            .padding(.trailing, 8)
+                    }
+                    Text(authMode == .signIn ? "Se connecter" : "Créer mon compte")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    LinearGradient(
+                        colors: [AppColors.accent, AppColors.secondaryAccent],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 16)
+                )
+                .foregroundStyle(.white)
+            }
+            .disabled(authService.isLoading)
+            .padding(.horizontal, AppSpacing.medium)
+        }
+    }
+
+    private func connectedCard(session: MusicGlassAuthService.Session) -> some View {
+        VStack(spacing: AppSpacing.medium) {
+            HStack(spacing: AppSpacing.medium) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.user.name)
+                        .font(.headline)
+                    Text(session.user.email ?? "Session active")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            Button(role: .destructive) {
+                authService.logout()
+                email = ""
+                password = ""
+                confirmPassword = ""
+                displayName = ""
+                localError = nil
+                authService.clearError()
+            } label: {
+                Label("Se déconnecter", systemImage: "rectangle.portrait.and.arrow.right")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(AppSpacing.medium)
+        .appGlass(in: RoundedRectangle(cornerRadius: 24))
+    }
+
     private func authField(title: String, text: Binding<String>, icon: String, contentType: UITextContentType? = nil, keyboardType: UIKeyboardType = .default) -> some View {
         HStack(spacing: AppSpacing.medium) {
             Image(systemName: icon)
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
-            
+
             TextField(title, text: text)
                 .textContentType(contentType)
                 .keyboardType(keyboardType)
@@ -918,29 +932,54 @@ struct ProfileAuthView: View {
         .padding()
         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
     }
-    
+
     private func authSecureField(title: String, text: Binding<String>) -> some View {
         HStack(spacing: AppSpacing.medium) {
             Image(systemName: "lock")
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
-            
+
             SecureField(title, text: text)
                 .textContentType(authMode == .signIn ? .password : .newPassword)
         }
         .padding()
         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
     }
-    
-    private func handleAuth() {
-        // Validation basique
-        if email.isEmpty || password.isEmpty { return }
-        
-        isLoading = true
-        // Simulation d'appel réseau
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            isLoading = false
-            showComingSoon = true
+
+    private func handleAuth() async {
+        localError = nil
+        authService.clearError()
+
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedEmail.isEmpty, !password.isEmpty else {
+            localError = "Veuillez renseigner votre e-mail et votre mot de passe."
+            return
+        }
+        if authMode == .signUp {
+            let normalizedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard normalizedName.count >= 2 else {
+                localError = "Le nom doit contenir au moins 2 caractères."
+                return
+            }
+            guard password.count >= 8 else {
+                localError = "Le mot de passe doit contenir au moins 8 caractères."
+                return
+            }
+            guard password == confirmPassword else {
+                localError = "Les mots de passe ne correspondent pas."
+                return
+            }
+
+            let created = await authService.signup(name: normalizedName, email: normalizedEmail, password: password)
+            if created {
+                dismiss()
+            }
+            return
+        }
+
+        let logged = await authService.login(email: normalizedEmail, password: password)
+        if logged {
+            dismiss()
         }
     }
 }
