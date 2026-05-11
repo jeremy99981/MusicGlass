@@ -71,10 +71,30 @@ struct SearchScreen: View {
                     }
                 }
             }) {
-                AIAssistantModalView(container: container) { shouldOpenPlayer in
-                    pendingFullPlayer = shouldOpenPlayer
-                    showAISearch = false
-                }
+                AIAssistantModalView(
+                    container: container,
+                    onFinish: { shouldOpenPlayer in
+                        pendingFullPlayer = shouldOpenPlayer
+                        showAISearch = false
+                    },
+                    onNavigateToArtist: { browseId, _ in
+                        showAISearch = false
+                        navigationPath.append(.artist(browseId))
+                    },
+                    onNavigateToAlbum: { browseId, _ in
+                        showAISearch = false
+                        navigationPath.append(.album(browseId))
+                    },
+                    onNavigateToPlaylist: { browseId, _ in
+                        showAISearch = false
+                        navigationPath.append(.playlist(browseId))
+                    },
+                    onSearch: { query in
+                        showAISearch = false
+                        viewModel.query = query
+                        viewModel.queryChanged()
+                    }
+                )
                 .environmentObject(container)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -232,8 +252,18 @@ struct AIAssistantModalView: View {
     @StateObject private var viewModel: AIAssistantViewModel
     var onFinish: ((Bool) -> Void)?
 
-    init(container: AppContainer, onFinish: ((Bool) -> Void)? = nil) {
-        _viewModel = StateObject(wrappedValue: AIAssistantViewModel(container: container))
+    init(container: AppContainer,
+         onFinish: ((Bool) -> Void)? = nil,
+         onNavigateToArtist: ((String, String) -> Void)? = nil,
+         onNavigateToAlbum: ((String, String) -> Void)? = nil,
+         onNavigateToPlaylist: ((String, String) -> Void)? = nil,
+         onSearch: ((String) -> Void)? = nil) {
+        let vm = AIAssistantViewModel(container: container)
+        vm.onNavigateToArtist = onNavigateToArtist
+        vm.onNavigateToAlbum = onNavigateToAlbum
+        vm.onNavigateToPlaylist = onNavigateToPlaylist
+        vm.onSearch = onSearch
+        _viewModel = StateObject(wrappedValue: vm)
         self.onFinish = onFinish
     }
 
@@ -325,6 +355,14 @@ struct AIAssistantModalView: View {
             textInputContent(message: message)
         case .error(let msg):
             errorContent(message: msg)
+        case .navigateToArtist, .navigateToAlbum, .navigateToPlaylist, .searchResults:
+            navigatingContent
+                .onAppear {
+                    viewModel.executeNavigation()
+                    dismiss()
+                }
+        case .chatResponse(let msg):
+            chatResponseContent(message: msg)
         }
     }
 
@@ -621,6 +659,54 @@ struct AIAssistantModalView: View {
         }
     }
 
+    private var navigatingContent: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Ouverture en cours...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func chatResponseContent(message: String) -> some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(AppColors.accent.opacity(0.12))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(AppColors.accent.gradient)
+            }
+            Text(message)
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8)
+
+            Button {
+                viewModel.reset()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 14))
+                    Text("Nouvelle recherche")
+                        .font(.body.weight(.medium))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(AppColors.accent.gradient)
+            )
+        }
+    }
+
     private func errorContent(message: String) -> some View {
         VStack(spacing: 20) {
             ZStack {
@@ -893,6 +979,11 @@ enum AIAssistantState: Equatable {
     case playing
     case textInput(String?)
     case error(String)
+    case navigateToArtist(browseId: String, name: String)
+    case navigateToAlbum(browseId: String, title: String)
+    case navigateToPlaylist(browseId: String, title: String)
+    case searchResults(query: String)
+    case chatResponse(String)
 }
 
 @MainActor
@@ -913,6 +1004,13 @@ final class AIAssistantViewModel: ObservableObject {
         self.container = container
         self.resolver = MusicAIResolver(client: container.youTubeMusicClient)
     }
+
+    // Navigation callbacks
+    var onNavigateToArtist: ((String, String) -> Void)?
+    var onNavigateToAlbum: ((String, String) -> Void)?
+    var onNavigateToPlaylist: ((String, String) -> Void)?
+    var onSearch: ((String) -> Void)?
+
 
     func setState(_ newState: AIAssistantState, reason: String) {
         print("🎙️ [AI STATE] \(state) -> \(newState) | Reason: \(reason)")
@@ -1030,8 +1128,18 @@ final class AIAssistantViewModel: ObservableObject {
             executeRadio(track)
         case .albumList(let albums):
             setState(.showingAlbumChoices(question: "Quel album voulez-vous écouter ?", albums: albums), reason: "Ambiguous request, showing list")
+        case .navigateToArtist(let browseId, let name):
+            setState(.navigateToArtist(browseId: browseId, name: name), reason: "Navigate to artist")
+        case .navigateToAlbum(let browseId, let title):
+            setState(.navigateToAlbum(browseId: browseId, title: title), reason: "Navigate to album")
+        case .navigateToPlaylist(let browseId, let title):
+            setState(.navigateToPlaylist(browseId: browseId, title: title), reason: "Navigate to playlist")
+        case .searchResults(let query):
+            setState(.searchResults(query: query), reason: "Search results")
         case .openSearch(let q):
-            setState(.error("Action non supportée pour l'instant: recherche \(q)"), reason: "Search resolution")
+            setState(.searchResults(query: q), reason: "Open search")
+        case .chatResponse(let msg):
+            setState(.chatResponse(msg), reason: "Chat response")
         case .needsClarification(let msg):
             setState(.textInput(msg), reason: "Needs clarification")
         case .failure(let msg):
@@ -1043,6 +1151,20 @@ final class AIAssistantViewModel: ObservableObject {
         setState(.playing, reason: "Executing playback")
         Task { @MainActor in
             container.playerEngine.play(track, queue: queue)
+        }
+    }
+
+    func executeNavigation() {
+        switch state {
+        case .navigateToArtist(let browseId, let name):
+            onNavigateToArtist?(browseId, name)
+        case .navigateToAlbum(let browseId, let title):
+            onNavigateToAlbum?(browseId, title)
+        case .navigateToPlaylist(let browseId, let title):
+            onNavigateToPlaylist?(browseId, title)
+        case .searchResults(let query):
+            onSearch?(query)
+        default: break
         }
     }
 

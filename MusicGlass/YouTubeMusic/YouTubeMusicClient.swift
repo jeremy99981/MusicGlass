@@ -510,9 +510,12 @@ private extension String {
 enum MusicAIIntentType: String, Codable {
     case playTrack, playPopularTrack, playLatestTrack
     case playAlbum, playLatestAlbum, playPopularAlbum
-    case openAlbum, listAlbums, listTracks
+    case openAlbum, openArtist, openPlaylist, listAlbums, listTracks
     case playArtistMix, playPlaylist, playLikedSongs
-    case playHistory, playMood, searchOnly, unknown
+    case playHistory, playMood, playGenre, playDecade, playSimilarTo
+    case playNewReleases, playRecommended
+    case searchAndShow
+    case chatResponse, unknown
     
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -528,11 +531,16 @@ struct MusicAIIntent: Codable, Hashable {
     let albumTitle: String?
     let playlistName: String?
     let mood: String?
+    let genre: String?
+    let decade: String?
+    let similarToTrack: String?
+    let similarToArtist: String?
     let language: String?
     let confidence: Double
     let shouldOpenFullPlayer: Bool
     let requiresUserChoice: Bool
     let clarificationQuestion: String?
+    let chatResponseText: String?
 }
 
 enum DeepSeekError: Error, LocalizedError {
@@ -558,21 +566,40 @@ final class DeepSeekMusicIntentService {
         guard let url = URL(string: endpoint) else { throw DeepSeekError.invalidURL }
         
         let systemPrompt = """
-        Tu es un parseur d'intentions musicales pour MusicGlass.
-        Réponds UNIQUEMENT avec un objet JSON valide. Aucun texte avant ou après. Aucun bloc ```json.
-        
-        Tu dois DIFFÉRENCIER :
-        1. Demander une LISTE (ex: "album Gazo", "montre les albums de...") -> type: listAlbums, requiresUserChoice: true.
-        2. Demander une LECTURE directe (ex: "lance", "joue", "lis", "mets") -> type: playAlbum/playTrack, requiresUserChoice: false.
-        3. Demander une OUVERTURE (ex: "ouvre") -> type: openAlbum, requiresUserChoice: false.
-        
-        Règles :
-        - "album [Artiste]" sans verbe d'action = listAlbums.
-        - "dernier album [Artiste]" sans verbe = openAlbum ou listAlbums (si ambigu).
-        - "lance le dernier album" = playLatestAlbum.
-        
-        Champs JSON : type, artistName, trackTitle, albumTitle, playlistName, mood, language, confidence, shouldOpenFullPlayer, requiresUserChoice, clarificationQuestion.
-        Types : playTrack, playPopularTrack, playLatestTrack, playAlbum, playLatestAlbum, playPopularAlbum, openAlbum, listAlbums, listTracks, playArtistMix, playPlaylist, playLikedSongs, playHistory, playMood, searchOnly, unknown.
+        Tu es un assistant musical intelligent pour MusicGlass. Réponds UNIQUEMENT avec un objet JSON valide. Aucun texte avant ou après. Aucun bloc ```json.
+
+        TON RÔLE : Comprendre ce que l'utilisateur veut faire avec sa musique.
+
+        === LECTURE DIRECTE (lance la musique) ===
+        - playTrack : "joue [titre] de [artiste]", "lance [titre]"
+        - playPopularTrack : "joue le plus populaire de [artiste]", "le hit de [artiste]"
+        - playLatestTrack : "joue le nouveau single de [artiste]"
+        - playAlbum : "joue l'album [album] de [artiste]", "lance [album]"
+        - playLatestAlbum : "joue le dernier album de [artiste]"
+        - playArtistMix : "joue [artiste]", "mix de [artiste]", "je veux écouter [artiste]"
+        - playPlaylist : "joue la playlist [nom]", "lance la playlist [nom]"
+        - playLikedSongs : "joue mes favoris", "mes likes", "joue mes titres likés"
+        - playHistory : "joue mon historique", "rejoue ce que j'ai écouté"
+        - playMood : "musique relaxante", "joue du jazz calme", "musique pour dormir" -> utilise mood
+        - playGenre : "joue du rock", "je veux du rap français", "musique électronique" -> utilise genre
+        - playDecade : "joue des hits des années 80", "musique années 90" -> utilise decade
+        - playSimilarTo : "joue des morceaux comme [titre]", "quelque chose comme [artiste]" -> utilise similarToTrack/similarToArtist
+        - playNewReleases : "nouveautés", "dernières sorties", "nouveaux albums"
+        - playRecommended : "recommande moi", "suggestions", "que me conseilles-tu"
+
+        === NAVIGATION (ouvre une page) ===
+        - openArtist : "ouvre la page de [artiste]", "montre [artiste]", "va sur [artiste]"
+        - openAlbum : "ouvre l'album [album]", "montre l'album [album]"
+        - openPlaylist : "ouvre la playlist [nom]", "montre la playlist [nom]"
+        - listAlbums : "montre les albums de [artiste]", "discographie de [artiste]"
+
+        === RECHERCHE ===
+        - searchAndShow : "recherche [terme]", "cherche [terme]", "trouve [terme]"
+
+        === CONVERSATION ===
+        - chatResponse : questions non musicales, salutations, "merci", "comment ça va" -> utilise chatResponseText
+
+        CHAMPS JSON : type, artistName, trackTitle, albumTitle, playlistName, mood, genre, decade, similarToTrack, similarToArtist, language, confidence (0.0-1.0), shouldOpenFullPlayer, requiresUserChoice, clarificationQuestion, chatResponseText.
         """
         
         let body: [String: Any] = [
@@ -638,6 +665,11 @@ enum MusicAIResolution {
     case playableRadio(Track)
     case albumList([Album])
     case openSearch(String)
+    case navigateToArtist(browseId: String, name: String)
+    case navigateToAlbum(browseId: String, title: String)
+    case navigateToPlaylist(browseId: String, title: String)
+    case searchResults(query: String)
+    case chatResponse(String)
     case needsClarification(String)
     case failure(String)
 }
@@ -656,11 +688,22 @@ final class MusicAIResolver {
         case .playLatestTrack: return try await resolveLatestTrack(intent)
         case .playAlbum: return try await resolveAlbum(intent)
         case .playLatestAlbum: return try await resolveLatestAlbum(intent)
-        case .openAlbum: return try await resolveAlbum(intent, openOnly: true)
+        case .openAlbum: return try await resolveOpenAlbum(intent)
+        case .openArtist: return try await resolveOpenArtist(intent)
+        case .openPlaylist: return try await resolveOpenPlaylist(intent)
         case .listAlbums: return try await resolveListAlbums(intent)
         case .playPlaylist: return try await resolvePlaylist(intent)
         case .playLikedSongs: return try await resolveLikedSongs()
         case .playArtistMix: return try await resolveArtistMix(intent)
+        case .playHistory: return try await resolveHistory(intent)
+        case .playMood: return try await resolveMood(intent)
+        case .playGenre: return try await resolveGenre(intent)
+        case .playDecade: return try await resolveDecade(intent)
+        case .playSimilarTo: return try await resolveSimilarTo(intent)
+        case .playNewReleases: return try await resolveNewReleases()
+        case .playRecommended: return try await resolveRecommended()
+        case .searchAndShow: return .searchResults(query: [intent.artistName, intent.trackTitle, intent.albumTitle].compactMap{$0}.joined(separator: " "))
+        case .chatResponse: return .chatResponse(intent.chatResponseText ?? "Je suis votre assistant musical. Que voulez-vous écouter ?")
         default: return .openSearch(String([intent.artistName, intent.trackTitle].compactMap{$0}.joined(separator: " ")))
         }
     }
@@ -745,5 +788,84 @@ final class MusicAIResolver {
             if let first = page.topTracks.first { return .playableRadio(first) }
         }
         return .failure("Mix artiste impossible")
+    }
+
+    private func resolveHistory(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let tracks = try await client.getYTHistory()
+        return tracks.isEmpty ? .failure("Historique vide") : .playableTrack(tracks[0], tracks)
+    }
+
+    private func resolveMood(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = intent.mood ?? "musique"
+        let res = try await client.search(query: q, filter: .songs)
+        return res.tracks.isEmpty ? .failure("Aucun résultat pour cette humeur") : .playableTrack(res.tracks[0], res.tracks)
+    }
+
+    private func resolveGenre(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = intent.genre ?? intent.mood ?? "musique"
+        let res = try await client.search(query: q, filter: .songs)
+        return res.tracks.isEmpty ? .failure("Aucun résultat pour ce genre") : .playableTrack(res.tracks[0], res.tracks)
+    }
+
+    private func resolveDecade(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = "hits \(intent.decade ?? "")"
+        let res = try await client.search(query: q, filter: .songs)
+        return res.tracks.isEmpty ? .failure("Aucun résultat pour cette décennie") : .playableTrack(res.tracks[0], res.tracks)
+    }
+
+    private func resolveSimilarTo(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = intent.similarToTrack ?? intent.similarToArtist ?? intent.trackTitle ?? ""
+        let res = try await client.search(query: q, filter: .songs)
+        let tracks = Array(res.tracks.dropFirst().prefix(20))
+        return res.tracks.isEmpty ? .failure("Aucune recommandation similaire") : .playableTrack(res.tracks[0], tracks)
+    }
+
+    private func resolveNewReleases() async throws -> MusicAIResolution {
+        let feed = try await client.getHome()
+        var allTracks: [Track] = []
+        for section in feed.sections {
+            for item in section.items {
+                if case .track(let t) = item { allTracks.append(t) }
+            }
+        }
+        return allTracks.isEmpty ? .failure("Aucune nouveauté disponible") : .playableTrack(allTracks[0], Array(allTracks.prefix(30)))
+    }
+
+    private func resolveRecommended() async throws -> MusicAIResolution {
+        let feed = try await client.getHome()
+        var allTracks: [Track] = []
+        for section in feed.sections {
+            for item in section.items {
+                if case .track(let t) = item { allTracks.append(t) }
+            }
+        }
+        return allTracks.isEmpty ? .failure("Aucune recommandation disponible") : .playableTrack(allTracks[0], Array(allTracks.shuffled().prefix(20)))
+    }
+
+    private func resolveOpenArtist(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = intent.artistName ?? ""
+        let res = try await client.search(query: q, filter: .artists)
+        if let artist = res.artists.first, let browseId = artist.browseId {
+            return .navigateToArtist(browseId: browseId, name: artist.name)
+        }
+        return .failure("Artiste non trouvé")
+    }
+
+    private func resolveOpenAlbum(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = [intent.albumTitle, intent.artistName].compactMap{$0}.joined(separator: " ")
+        let res = try await client.search(query: q, filter: .albums)
+        if let album = res.albums.first, let browseId = album.browseId {
+            return .navigateToAlbum(browseId: browseId, title: album.title)
+        }
+        return .failure("Album non trouvé")
+    }
+
+    private func resolveOpenPlaylist(_ intent: MusicAIIntent) async throws -> MusicAIResolution {
+        let q = intent.playlistName ?? ""
+        let res = try await client.search(query: q, filter: .playlists)
+        if let playlist = res.playlists.first, let browseId = playlist.browseId {
+            return .navigateToPlaylist(browseId: browseId, title: playlist.title)
+        }
+        return .failure("Playlist non trouvée")
     }
 }
