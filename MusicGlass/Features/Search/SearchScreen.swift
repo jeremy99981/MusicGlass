@@ -228,6 +228,7 @@ struct SearchScreen: View {
 
 struct AIAssistantModalView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var viewModel: AIAssistantViewModel
     var onFinish: ((Bool) -> Void)?
 
@@ -237,26 +238,69 @@ struct AIAssistantModalView: View {
     }
 
     var body: some View {
-        VStack(spacing: 30) {
+        VStack(spacing: 0) {
             header
-            Spacer()
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+
+            Spacer(minLength: 0)
+
             mainContent
-            Spacer()
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
+
+            Spacer(minLength: 0)
         }
-        .padding(30)
-        .appGlass(in: RoundedRectangle(cornerRadius: 32))
+        .padding(.bottom, 24)
+        .background(
+            RoundedRectangle(cornerRadius: 36)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 36)
+                        .stroke(.white.opacity(colorScheme == .dark ? 0.12 : 0.25), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 20)
+        .padding(.vertical, 40)
         .onDisappear { viewModel.reset() }
     }
 
     private var header: some View {
-        HStack {
-            Text("Assistant IA").font(.title2.bold())
-            Spacer()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .padding(10)
-                    .appGlass(in: Circle(), interactive: true)
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [AppColors.accent, AppColors.accent.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 40, height: 40)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
             }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Assistant IA")
+                    .font(.title3.weight(.bold))
+                Text("Recherche musicale intelligente")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -264,148 +308,355 @@ struct AIAssistantModalView: View {
     private var mainContent: some View {
         switch viewModel.state {
         case .idle:
-            VStack(spacing: 24) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 60))
-                    .foregroundStyle(AppColors.accent.gradient)
-                Text("Comment puis-je vous aider ?")
-                    .font(.headline)
-                Button("Démarrer l'Assistant") {
-                    Task { await viewModel.startAssistant() }
-                }
-                .appGlass(in: Capsule(), interactive: true)
-
-                Button("Écrire ma demande") {
-                    viewModel.setState(.textInput(nil), reason: "User chose text input")
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            }
-
+            idleContent
         case .checkingPermissions, .requestingSpeechPermission, .requestingMicrophonePermission:
-            InitializingView(text: "Vérification des autorisations...")
-
+            InitializingView(text: "Verification des autorisations...")
         case .startingAudio:
-            InitializingView(text: "Préparation du micro...")
-
+            InitializingView(text: "Preparation du micro...")
         case .listening:
-            VStack(spacing: 20) {
-                WaveformView()
-                    .frame(height: 80)
-                    .padding(.vertical)
-                Text(viewModel.transcript.isEmpty ? "Je vous écoute..." : viewModel.transcript)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                HStack(spacing: 20) {
-                    Button("Annuler") { viewModel.reset() }
-                        .appGlass(in: Capsule(), interactive: true)
-                    Button("Terminer") {
-                        Task { await viewModel.finishListening() }
-                    }
-                    .appGlass(tint: AppColors.accent, in: Capsule(), interactive: true)
-                }
-            }
-
+            listeningContent
         case .processingSpeech, .thinking:
             InitializingView(text: "Analyse de votre demande...")
-
         case .resolving:
             InitializingView(text: "Recherche de la musique...")
-
         case .showingAlbumChoices(let question, let albums):
-            VStack(spacing: 20) {
-                Text(question)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
+            albumChoicesContent(question: question, albums: albums)
+        case .playing:
+            playingContent
+        case .textInput(let message):
+            textInputContent(message: message)
+        case .error(let msg):
+            errorContent(message: msg)
+        }
+    }
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) {
-                        ForEach(albums) { album in
-                            Button {
-                                Task { await viewModel.selectAlbum(album) }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    AsyncImage(url: album.bestThumbnailURL) { image in
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    } placeholder: {
-                                        Color.gray.opacity(0.3)
-                                    }
-                                    .frame(width: 140, height: 140)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+    private var idleContent: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(AppColors.accent.opacity(0.12))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "waveform.circle.fill")
+                    .font(.system(size: 52))
+                    .foregroundStyle(AppColors.accent.gradient)
+            }
 
-                                    Text(album.title)
-                                        .font(.subheadline.bold())
-                                        .lineLimit(2)
-
-                                    Text(album.artists.first?.name ?? "")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(width: 140)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 4)
-                }
-
-                Button("Annuler") { viewModel.reset() }
+            VStack(spacing: 8) {
+                Text("Comment puis-je vous aider ?")
+                    .font(.title3.weight(.semibold))
+                Text("Dites ou ecrivez ce que vous voulez ecouter")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-        case .playing:
-            VStack(spacing: 20) {
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(AppColors.accent.gradient)
-                Text("Lecture en cours...")
-                    .font(.headline)
-            }
-            .onAppear {
-                Task {
-                    try? await Task.sleep(nanoseconds: 800_000_000)
-                    onFinish?(true)
+            VStack(spacing: 12) {
+                Button {
+                    Task { await viewModel.startAssistant() }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 18))
+                        Text("Demarrer l'Assistant")
+                            .font(.body.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(AppColors.accent.gradient)
+                )
+
+                Button {
+                    viewModel.setState(.textInput(nil), reason: "User chose text input")
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 16))
+                        Text("Ecrire ma demande")
+                            .font(.body)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(.primary.opacity(0.1), lineWidth: 0.5)
+                        )
+                )
+            }
+        }
+    }
+
+    private var listeningContent: some View {
+        VStack(spacing: 28) {
+            ZStack {
+                Circle()
+                    .fill(AppColors.accent.opacity(0.15))
+                    .frame(width: 140, height: 140)
+
+                WaveformView()
+                    .frame(width: 100, height: 60)
             }
 
-        case .textInput(let message):
-            VStack(spacing: 20) {
-                if let message = message {
-                    Text(message)
-                        .font(.subheadline)
+            VStack(spacing: 10) {
+                if viewModel.transcript.isEmpty {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(AppColors.accent)
+                            .frame(width: 8, height: 8)
+                            .opacity(0.8)
+                            .scaleEffect(1.0)
+                            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: true)
+                        Text("Je vous ecoute...")
+                            .font(.headline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text(viewModel.transcript)
+                        .font(.title3.weight(.medium))
                         .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(.ultraThinMaterial)
+                        )
                 }
-                TextField("Artiste, album, humeur...", text: $viewModel.textInput)
-                    .padding()
-                    .appGlass(in: RoundedRectangle(cornerRadius: 16))
+            }
 
-                Button("Envoyer") {
+            HStack(spacing: 16) {
+                Button {
+                    viewModel.reset()
+                } label: {
+                    Text("Annuler")
+                        .font(.body.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
+
+                Button {
+                    Task { await viewModel.finishListening() }
+                } label: {
+                    Text("Terminer")
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(AppColors.accent.gradient)
+                )
+            }
+        }
+    }
+
+    private var playingContent: some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(AppColors.accent.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 36))
+                    .foregroundStyle(AppColors.accent.gradient)
+            }
+            Text("Lecture en cours...")
+                .font(.headline)
+            Text("Votre musique est lancee")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear {
+            Task {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                onFinish?(true)
+            }
+        }
+    }
+
+    private func albumChoicesContent(question: String, albums: [Album]) -> some View {
+        VStack(spacing: 20) {
+            Text(question)
+                .font(.headline.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(albums) { album in
+                        Button {
+                            Task { await viewModel.selectAlbum(album) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 10) {
+                                AsyncImage(url: album.bestThumbnailURL) { image in
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .fill(.ultraThinMaterial)
+                                }
+                                .frame(width: 140, height: 140)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(.primary.opacity(0.06), lineWidth: 0.5)
+                                )
+
+                                Text(album.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(2)
+                                    .frame(width: 140, alignment: .leading)
+
+                                Text(album.artists.first?.name ?? "")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .frame(width: 140, alignment: .leading)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+
+            Button {
+                viewModel.reset()
+            } label: {
+                Text("Annuler")
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(.ultraThinMaterial)
+            )
+        }
+    }
+
+    private func textInputContent(message: String?) -> some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(AppColors.accent.opacity(0.12))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "pencil.line")
+                    .font(.system(size: 30))
+                    .foregroundStyle(AppColors.accent.gradient)
+            }
+
+            if let message {
+                Text(message)
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+            }
+
+            HStack(spacing: 0) {
+                TextField("Artiste, album, humeur...", text: $viewModel.textInput)
+                    .font(.body)
+                    .padding(.leading, 16)
+                    .padding(.vertical, 14)
+
+                Button {
                     Task { await viewModel.processText(viewModel.textInput) }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(viewModel.textInput.isEmpty ? .secondary : AppColors.accent)
+                        .symbolRenderingMode(.hierarchical)
                 }
                 .disabled(viewModel.textInput.isEmpty)
-                .appGlass(tint: viewModel.textInput.isEmpty ? nil : AppColors.accent, in: Capsule(), interactive: true)
+                .buttonStyle(.plain)
+                .padding(.trailing, 6)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(viewModel.textInput.isEmpty ? .primary.opacity(0.08) : AppColors.accent.opacity(0.3), lineWidth: 1)
+                    )
+            )
+            .animation(.easeInOut(duration: 0.25), value: viewModel.textInput.isEmpty)
 
-                Button("Réessayer le micro") {
-                    viewModel.reset()
-                    Task { await viewModel.startAssistant() }
+            Button {
+                viewModel.reset()
+                Task { await viewModel.startAssistant() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 14))
+                    Text("Reessayer le micro")
+                        .font(.subheadline)
                 }
-                .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.top)
             }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+    }
 
-        case .error(let msg):
-            VStack(spacing: 20) {
+    private func errorContent(message: String) -> some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(.orange.opacity(0.12))
+                    .frame(width: 72, height: 72)
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 50))
+                    .font(.system(size: 30))
                     .foregroundStyle(.orange)
-                Text(msg)
-                    .multilineTextAlignment(.center)
-                Button("Réessayer") { viewModel.reset() }
-                    .appGlass(in: Capsule(), interactive: true)
             }
+            Text(message)
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+
+            Button {
+                viewModel.reset()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 14))
+                    Text("Reessayer")
+                        .font(.body.weight(.medium))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(AppColors.accent.gradient)
+            )
         }
     }
 }
