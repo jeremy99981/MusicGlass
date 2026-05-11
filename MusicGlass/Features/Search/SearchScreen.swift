@@ -63,9 +63,16 @@ struct SearchScreen: View {
                 }
             }
             .sheet(isPresented: $showAISearch, onDismiss: {
+                if let destination = pendingNavigation {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        navigationPath.append(destination)
+                        pendingNavigation = nil
+                    }
+                }
                 if pendingFullPlayer {
                     Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 300_000_000) // Attendre que le sheet soit disparu
+                        try? await Task.sleep(nanoseconds: 300_000_000)
                         player.shouldShowFullPlayer = true
                         pendingFullPlayer = false
                     }
@@ -78,21 +85,23 @@ struct SearchScreen: View {
                         showAISearch = false
                     },
                     onNavigateToArtist: { browseId, _ in
+                        pendingNavigation = .artist(browseId)
                         showAISearch = false
-                        navigationPath.append(.artist(browseId))
                     },
                     onNavigateToAlbum: { browseId, _ in
+                        pendingNavigation = .album(browseId)
                         showAISearch = false
-                        navigationPath.append(.album(browseId))
                     },
                     onNavigateToPlaylist: { browseId, _ in
+                        pendingNavigation = .playlist(browseId)
                         showAISearch = false
-                        navigationPath.append(.playlist(browseId))
                     },
                     onSearch: { query in
                         showAISearch = false
-                        viewModel.query = query
-                        viewModel.queryChanged()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            viewModel.query = query
+                            viewModel.queryChanged()
+                        }
                     }
                 )
                 .environmentObject(container)
@@ -105,6 +114,7 @@ struct SearchScreen: View {
 
     @State private var showAISearch = false
     @State private var pendingFullPlayer = false
+    @State private var pendingNavigation: MusicDestination? = nil
 
     private var filterChips: some View {
         ScrollView(.horizontal) {
@@ -359,7 +369,6 @@ struct AIAssistantModalView: View {
             navigatingContent
                 .onAppear {
                     viewModel.executeNavigation()
-                    dismiss()
                 }
         case .chatResponse(let msg):
             chatResponseContent(message: msg)
