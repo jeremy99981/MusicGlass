@@ -82,7 +82,7 @@ struct SearchScreen: View {
             }
         }
     }
-    
+
     @State private var showAISearch = false
     @State private var pendingFullPlayer = false
 
@@ -230,12 +230,12 @@ struct AIAssistantModalView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: AIAssistantViewModel
     var onFinish: ((Bool) -> Void)?
-    
+
     init(container: AppContainer, onFinish: ((Bool) -> Void)? = nil) {
         _viewModel = StateObject(wrappedValue: AIAssistantViewModel(container: container))
         self.onFinish = onFinish
     }
-    
+
     var body: some View {
         VStack(spacing: 30) {
             header
@@ -247,7 +247,7 @@ struct AIAssistantModalView: View {
         .appGlass(in: RoundedRectangle(cornerRadius: 32))
         .onDisappear { viewModel.reset() }
     }
-    
+
     private var header: some View {
         HStack {
             Text("Assistant IA").font(.title2.bold())
@@ -259,7 +259,7 @@ struct AIAssistantModalView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var mainContent: some View {
         switch viewModel.state {
@@ -274,20 +274,20 @@ struct AIAssistantModalView: View {
                     Task { await viewModel.startAssistant() }
                 }
                 .appGlass(in: Capsule(), interactive: true)
-                
+
                 Button("Écrire ma demande") {
                     viewModel.setState(.textInput(nil), reason: "User chose text input")
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
-            
+
         case .checkingPermissions, .requestingSpeechPermission, .requestingMicrophonePermission:
             InitializingView(text: "Vérification des autorisations...")
-            
+
         case .startingAudio:
             InitializingView(text: "Préparation du micro...")
-            
+
         case .listening:
             VStack(spacing: 20) {
                 WaveformView()
@@ -305,19 +305,19 @@ struct AIAssistantModalView: View {
                     .appGlass(tint: AppColors.accent, in: Capsule(), interactive: true)
                 }
             }
-            
+
         case .processingSpeech, .thinking:
             InitializingView(text: "Analyse de votre demande...")
-            
+
         case .resolving:
             InitializingView(text: "Recherche de la musique...")
-            
+
         case .showingAlbumChoices(let question, let albums):
             VStack(spacing: 20) {
                 Text(question)
                     .font(.headline)
                     .multilineTextAlignment(.center)
-                
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
                         ForEach(albums) { album in
@@ -332,11 +332,11 @@ struct AIAssistantModalView: View {
                                     }
                                     .frame(width: 140, height: 140)
                                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                                    
+
                                     Text(album.title)
                                         .font(.subheadline.bold())
                                         .lineLimit(2)
-                                    
+
                                     Text(album.artists.first?.name ?? "")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -348,12 +348,12 @@ struct AIAssistantModalView: View {
                     }
                     .padding(.horizontal, 4)
                 }
-                
+
                 Button("Annuler") { viewModel.reset() }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            
+
         case .playing:
             VStack(spacing: 20) {
                 Image(systemName: "play.circle.fill")
@@ -368,7 +368,7 @@ struct AIAssistantModalView: View {
                     onFinish?(true)
                 }
             }
-            
+
         case .textInput(let message):
             VStack(spacing: 20) {
                 if let message = message {
@@ -380,13 +380,13 @@ struct AIAssistantModalView: View {
                 TextField("Artiste, album, humeur...", text: $viewModel.textInput)
                     .padding()
                     .appGlass(in: RoundedRectangle(cornerRadius: 16))
-                
+
                 Button("Envoyer") {
                     Task { await viewModel.processText(viewModel.textInput) }
                 }
                 .disabled(viewModel.textInput.isEmpty)
                 .appGlass(tint: viewModel.textInput.isEmpty ? nil : AppColors.accent, in: Capsule(), interactive: true)
-                
+
                 Button("Réessayer le micro") {
                     viewModel.reset()
                     Task { await viewModel.startAssistant() }
@@ -395,7 +395,7 @@ struct AIAssistantModalView: View {
                 .foregroundStyle(.secondary)
                 .padding(.top)
             }
-            
+
         case .error(let msg):
             VStack(spacing: 20) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -503,18 +503,22 @@ enum SpeechVoiceState {
 @MainActor
 final class SpeechVoiceService: NSObject, ObservableObject {
     @Published private(set) var state: SpeechVoiceState = .idle
-    
+
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
-    
+
     override init() {
         super.init()
-        // Initialisation sécurisée du recognizer
+        // Guard: check input availability (simulator has no hardware microphone)
+        guard audioEngine.isInputAvailable else {
+            self.speechRecognizer = nil
+            return
+        }
         self.speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR")) ?? SFSpeechRecognizer()
     }
-    
+
     func requestPermissions() async -> Bool {
         // 1. Speech
         let speechStatus = await withCheckedContinuation { continuation in
@@ -523,7 +527,7 @@ final class SpeechVoiceService: NSObject, ObservableObject {
             }
         }
         guard speechStatus == .authorized else { return false }
-        
+
         // 2. Microphone
         let micStatus = await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
@@ -532,11 +536,16 @@ final class SpeechVoiceService: NSObject, ObservableObject {
         }
         return micStatus
     }
-    
+
     func startListening(onPartialResult: @escaping (String) -> Void, onFinalResult: @escaping (String) -> Void, onError: @escaping (String) -> Void) async throws {
-        // Arrêt propre de toute session précédente
+        // Stop any previous session
         stopListening()
-        
+
+        // Guard: no input hardware available (simulator)
+        guard audioEngine.isInputAvailable else {
+            throw NSError(domain: "SpeechVoiceService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Aucun microphone disponible sur cet appareil."])
+        }
+
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth, .duckOthers])
@@ -544,36 +553,41 @@ final class SpeechVoiceService: NSObject, ObservableObject {
         } catch {
             throw NSError(domain: "SpeechVoiceService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Erreur session audio: \(error.localizedDescription)"])
         }
-        
+
         guard let recognizer = speechRecognizer, recognizer.isAvailable else {
             throw NSError(domain: "SpeechVoiceService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Reconnaissance vocale indisponible sur cet appareil"])
         }
-        
+
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        guard let recognitionRequest = recognitionRequest else { return }
+        guard let recognitionRequest = recognitionRequest else {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            throw NSError(domain: "SpeechVoiceService", code: 4, userInfo: [NSLocalizedDescriptionKey: "Impossible de creer la requete de reconnaissance."])
+        }
         recognitionRequest.shouldReportPartialResults = true
-        
+
         // SÉCURITÉ : Accès au nœud d'entrée peut crasher si non autorisé
         let inputNode = audioEngine.inputNode
         inputNode.removeTap(onBus: 0)
-        
+
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
-            throw NSError(domain: "SpeechVoiceService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Configuration micro invalide"])
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            throw NSError(domain: "SpeechVoiceService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Configuration micro invalide."])
         }
-        
+
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
         }
-        
+
         audioEngine.prepare()
         do {
             try audioEngine.start()
         } catch {
             inputNode.removeTap(onBus: 0)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             throw error
         }
-        
+
         recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             Task { @MainActor in
                 if let result = result {
@@ -582,33 +596,34 @@ final class SpeechVoiceService: NSObject, ObservableObject {
                         onFinalResult(result.bestTranscription.formattedString)
                     }
                 }
-                
+
                 if let error = error {
                     let nsError = error as NSError
                     // Ignorer les erreurs d'annulation normales
                     if nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 4 { return }
                     if nsError.domain == "NSURLErrorDomain" && nsError.code == -999 { return }
-                    
+
                     onError(error.localizedDescription)
                     self?.stopListening()
                 }
             }
         }
     }
-    
+
     func stopListening() {
-        // SÉCURITÉ : Vérifier si l'engine tourne pour éviter des appels inutiles
+        // Guard: only touch audio engine if input is available
+        guard audioEngine.isInputAvailable else { return }
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
         }
-        
+
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
-        
+
         recognitionRequest = nil
         recognitionTask = nil
-        
+
         // Nettoyage de la session
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
@@ -636,43 +651,43 @@ final class AIAssistantViewModel: ObservableObject {
     @Published private(set) var state: AIAssistantState = .idle
     @Published var transcript = ""
     @Published var textInput = ""
-    
+
     private let speechService = SpeechVoiceService()
     private let intentService = DeepSeekMusicIntentService()
     private let resolver: MusicAIResolver
     private let container: AppContainer
-    
+
     private var isStarting = false
     private var isListening = false
-    
+
     init(container: AppContainer) {
         self.container = container
         self.resolver = MusicAIResolver(client: container.youTubeMusicClient)
     }
-    
+
     func setState(_ newState: AIAssistantState, reason: String) {
         print("🎙️ [AI STATE] \(state) -> \(newState) | Reason: \(reason)")
         state = newState
     }
-    
+
     func startAssistant() async {
         guard !isStarting else { return }
         guard !isListening else { return }
-        
+
         isStarting = true
         defer { isStarting = false }
-        
+
         transcript = ""
         setState(.checkingPermissions, reason: "User tapped start")
-        
+
         let granted = await speechService.requestPermissions()
         guard granted else {
             setState(.textInput("Permissions refusées. Vous pouvez écrire votre demande."), reason: "Permissions denied")
             return
         }
-        
+
         setState(.startingAudio, reason: "Permissions granted")
-        
+
         do {
             try await speechService.startListening(
                 onPartialResult: { [weak self] text in
@@ -698,22 +713,27 @@ final class AIAssistantViewModel: ObservableObject {
             isListening = true
             setState(.listening, reason: "Audio engine started")
         } catch {
-            setState(.error("Impossible de démarrer l'écoute. Vérifiez votre micro ou réessayez."), reason: "Start error: \(error)")
+            let errorMsg = error.localizedDescription
+            if errorMsg.contains("Aucun microphone") || errorMsg.contains("indisponible") {
+                setState(.textInput("Microphone indisponible sur cet appareil. Vous pouvez ecrire votre demande."), reason: "No microphone")
+            } else {
+                setState(.error("Impossible de demarrer l'ecoute. Verifiez votre micro ou reessayez."), reason: "Start error: \(error)")
+            }
         }
     }
-    
+
     func finishListening() async {
         guard isListening else { return }
         isListening = false
         speechService.stopListening()
-        
+
         if transcript.isEmpty {
             setState(.textInput("Je n'ai rien entendu. Réessayez ou écrivez."), reason: "Empty transcript")
         } else {
             await processText(transcript)
         }
     }
-    
+
     func processText(_ text: String) async {
         setState(.thinking, reason: "Processing text: \(text)")
         do {
@@ -726,7 +746,7 @@ final class AIAssistantViewModel: ObservableObject {
             setState(.error(userMsg), reason: "DeepSeek error: \(error)")
         }
     }
-    
+
     func selectAlbum(_ album: Album) async {
         guard let browseId = album.browseId else {
             setState(.error("Identifiant d'album manquant."), reason: "Missing browseId")
@@ -740,19 +760,19 @@ final class AIAssistantViewModel: ObservableObject {
             setState(.error("Impossible d'ouvrir l'album : \(error.localizedDescription)"), reason: "Album load error")
         }
     }
-    
+
     private func handleResolution(_ resolution: MusicAIResolution) async {
         switch resolution {
         case .playableTrack(let track, let queue):
             executePlay(track, queue: queue)
         case .playableAlbum(_, let tracks):
-            if let first = tracks.first { 
+            if let first = tracks.first {
                 executePlay(first, queue: tracks)
             } else {
                 setState(.error("L'album est vide."), reason: "Empty album")
             }
         case .playablePlaylist(_, let tracks):
-            if let first = tracks.first { 
+            if let first = tracks.first {
                 executePlay(first, queue: tracks)
             } else {
                 setState(.error("La playlist est vide."), reason: "Empty playlist")
@@ -769,21 +789,21 @@ final class AIAssistantViewModel: ObservableObject {
             setState(.error(msg), reason: "Resolution failure")
         }
     }
-    
+
     private func executePlay(_ track: Track, queue: [Track]) {
         setState(.playing, reason: "Executing playback")
         Task { @MainActor in
             container.playerEngine.play(track, queue: queue)
         }
     }
-    
+
     private func executeRadio(_ track: Track) {
         setState(.playing, reason: "Executing radio")
         Task { @MainActor in
             container.playerEngine.playRadio(from: track)
         }
     }
-    
+
     func reset() {
         speechService.stopListening()
         isListening = false
