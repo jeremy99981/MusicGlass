@@ -239,29 +239,27 @@ struct AIAssistantModalView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Drag handle
+            RoundedRectangle(cornerRadius: 999)
+                .fill(.secondary.opacity(0.3))
+                .frame(width: 38, height: 5)
+                .padding(.top, 10)
+
             header
                 .padding(.horizontal, 24)
-                .padding(.top, 24)
-
-            Spacer(minLength: 0)
+                .padding(.top, 18)
 
             mainContent
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 24)
-
-            Spacer(minLength: 0)
+                .padding(.vertical, 16)
         }
-        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 36)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 36)
-                        .stroke(.white.opacity(colorScheme == .dark ? 0.12 : 0.25), lineWidth: 0.5)
-                )
+            Rectangle()
+                .fill(.regularMaterial)
+                .ignoresSafeArea()
         )
-        .padding(.horizontal, 20)
-        .padding(.vertical, 40)
         .onDisappear { viewModel.reset() }
     }
 
