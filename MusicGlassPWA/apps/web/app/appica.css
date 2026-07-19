@@ -1,0 +1,24 @@
+@import "tailwindcss";
+@import "@appica/ui-react/styles.css";
+
+@source "@appica/ui-react";
+@source "../components/**/*.{ts,tsx}";
+@source "./**/*.{ts,tsx}";
+
+:root,
+.light {
+  --primary: oklch(0.22 0.025 257);
+  --background: oklch(0.965 0.008 255);
+  --background-subtle: oklch(0.985 0.004 255);
+  --background-muted: oklch(0.94 0.01 255);
+  --foreground: oklch(0.22 0.025 257);
+  --foreground-muted: oklch(0.53 0.025 257);
+  --border: oklch(0.88 0.012 255);
+  --radius: 0.75rem;
+  --font-sans: var(--font-inter), sans-serif;
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+}

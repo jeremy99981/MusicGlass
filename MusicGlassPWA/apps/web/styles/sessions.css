@@ -1,0 +1,134 @@
+.shared-session {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.shared-session-title,
+.session-participants,
+.account-status,
+.account-status a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.shared-session-title svg {
+  color: var(--muted);
+}
+
+.shared-session-status,
+.shared-session-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-status {
+  min-width: 0;
+  flex-wrap: wrap;
+  padding: 10px;
+  color: var(--muted);
+  border-radius: 11px;
+  background: var(--surface-soft);
+  font-size: 10px;
+}
+
+.account-status a {
+  margin-left: auto;
+  color: var(--ink);
+  font-weight: 750;
+}
+
+.session-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.session-actions button,
+.session-action {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.session-actions > .primary-button {
+  color: #fff;
+  background: var(--ink);
+}
+
+.session-join-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.session-join-form input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  outline: 0;
+  background: #fff;
+}
+
+.ghost-button {
+  color: var(--ink);
+  background: var(--surface-soft);
+}
+
+.session-code {
+  padding: 12px;
+  border-radius: 11px;
+  background: var(--surface-soft);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.session-participants,
+.session-chips {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.session-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.session-chips span {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.session-error {
+  padding: 10px;
+  color: var(--danger);
+  border-radius: 10px;
+  background: #fff2f4;
+  font-size: 10px;
+}
+
+.shared-session-compact {
+  margin-top: auto;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface-soft);
+}
+
+.shared-session-compact .shared-session-copy,
+.shared-session-compact .session-join-form,
+.shared-session-compact .shared-session-status {
+  display: none;
+}
+

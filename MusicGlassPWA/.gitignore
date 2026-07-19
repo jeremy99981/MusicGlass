@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.netlify/
+**/.netlify/
+out/
+coverage/
+playwright-report/
+test-results/
+artifacts/
+.env
+.env.local
+*.log
+.DS_Store
+*.tsbuildinfo
+services/api/server
+services/api/tmp/

@@ -1,0 +1,333 @@
+@media (max-width: 639px) {
+  :root {
+    --mobile-gutter: 18px;
+  }
+
+  .page {
+    padding-top: calc(var(--safe-top) + 18px);
+  }
+
+  .topbar {
+    margin-bottom: 24px;
+  }
+
+  .topbar h1 {
+    font-size: 32px;
+  }
+
+  .library-auth-card,
+  .provider-card,
+  .library-create,
+  .library-session-card {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .library-auth-card a,
+  .provider-card button,
+  .provider-card a {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .stat-grid {
+    gap: 8px;
+  }
+
+  .stat-grid article {
+    min-height: 118px;
+    padding: 16px;
+  }
+
+  .library-create form {
+    display: grid;
+  }
+
+  .library-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 12px;
+  }
+
+  .library-liked-list {
+    grid-template-columns: 1fr;
+  }
+
+  .fp-header {
+    min-height: calc(64px + var(--safe-top));
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    padding: var(--safe-top) max(16px, var(--safe-right)) 0 max(16px, var(--safe-left));
+  }
+
+  .fp-close {
+    width: 40px;
+    height: 40px;
+    background: transparent;
+  }
+
+  .fp-body {
+    width: 100%;
+    min-height: calc(100dvh - 64px - var(--safe-top));
+    gap: 28px;
+    padding: 18px max(20px, var(--safe-right)) calc(28px + var(--safe-bottom)) max(20px, var(--safe-left));
+  }
+
+  .fp-artwork-wrap {
+    width: min(100%, 430px);
+  }
+
+  .fp-artwork-frame {
+    border-radius: 25px;
+    box-shadow: 0 22px 48px rgb(23 28 38 / 18%);
+  }
+
+  .fp-track-row {
+    align-items: flex-start;
+  }
+
+  .fp-title {
+    font-size: clamp(28px, 8vw, 38px);
+  }
+
+  .fp-artist {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+
+  .fp-timeline {
+    margin-top: 14px;
+  }
+
+  .fp-controls {
+    margin-top: 20px;
+  }
+
+  .fp-play-btn {
+    width: 66px;
+    height: 66px;
+  }
+
+  .fp-ctrl-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .queue-backdrop {
+    background: #fff;
+    backdrop-filter: none;
+  }
+
+  .queue-dismiss {
+    display: none;
+  }
+
+  .queue-sheet {
+    width: 100%;
+    padding-top: var(--safe-top);
+    box-shadow: none;
+  }
+
+  .queue-handle {
+    display: none;
+  }
+
+  .queue-header {
+    padding: 22px 20px 18px;
+  }
+
+  .queue-header h2 {
+    font-size: 28px;
+  }
+
+  .queue-body {
+    padding: 22px 12px 120px;
+  }
+
+  .queue-mobile-footer {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 58px;
+    gap: 10px;
+    padding: 12px max(16px, var(--safe-right)) calc(12px + var(--safe-bottom)) max(16px, var(--safe-left));
+    border-top: 1px solid var(--line);
+    background: rgb(255 255 255 / 94%);
+    backdrop-filter: blur(22px);
+  }
+
+  .queue-mobile-now-playing {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px 6px 6px;
+    color: var(--ink);
+    border: 0;
+    border-radius: 15px;
+    background: var(--surface-soft);
+    text-align: left;
+  }
+
+  .queue-mobile-now-playing img {
+    width: 46px;
+    height: 46px;
+    object-fit: cover;
+    border-radius: 11px;
+  }
+
+  .queue-mobile-now-playing span,
+  .queue-mobile-now-playing strong,
+  .queue-mobile-now-playing small {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .queue-mobile-now-playing small {
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .queue-mobile-now-playing strong {
+    font-size: 12px;
+  }
+
+  .queue-mobile-play {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    place-items: center;
+    padding: 0;
+    color: #fff;
+    border: 0;
+    border-radius: 18px;
+    background: var(--ink);
+  }
+
+  .detail-header,
+  .artist-hero {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    margin-top: 20px;
+    padding: 18px;
+    border-radius: 24px;
+  }
+
+  .detail-cover,
+  .artist-portrait {
+    width: min(100%, 340px);
+    justify-self: center;
+  }
+
+  .detail-copy h1,
+  .artist-copy h1 {
+    font-size: 36px;
+  }
+
+  .detail-play,
+  .artist-play {
+    width: 58px;
+    height: 58px;
+    justify-self: end;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0;
+  }
+
+  .track-row {
+    grid-template-columns: 52px minmax(0, 1fr) 36px;
+    gap: 10px;
+    padding-inline: 4px;
+  }
+
+  .track-index {
+    display: none;
+  }
+
+  .track-row .icon-button {
+    width: 36px;
+  }
+}
+
+@media (max-width: 639px) and (max-height: 700px) {
+  .fp-header {
+    min-height: calc(54px + var(--safe-top));
+  }
+
+  .fp-body {
+    min-height: calc(100dvh - 54px - var(--safe-top));
+    gap: 12px;
+    padding-top: 4px;
+  }
+
+  .fp-artwork-wrap {
+    width: min(64vw, 230px);
+  }
+
+  .fp-artwork-frame {
+    border-radius: 19px;
+  }
+
+  .fp-title {
+    font-size: 25px;
+  }
+
+  .fp-mobile-actions {
+    margin-top: 10px;
+  }
+
+  .fp-mobile-actions button {
+    height: 40px;
+    min-width: 40px;
+    border-radius: 13px;
+  }
+
+  .fp-timeline {
+    margin-top: 6px;
+  }
+
+  .fp-controls {
+    margin-top: 8px;
+  }
+
+  .fp-play-btn {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+@media (max-width: 370px) {
+  :root {
+    --mobile-gutter: 14px;
+  }
+
+  .mobile-nav {
+    right: 8px;
+    left: 8px;
+  }
+
+  .mobile-nav a span {
+    font-size: 8px;
+  }
+
+  .mini-player {
+    right: 12px;
+    left: 12px;
+  }
+
+  .mini-actions .mini-like {
+    display: none;
+  }
+
+  .fp-body {
+    padding-inline: 16px;
+  }
+}

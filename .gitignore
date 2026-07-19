@@ -92,3 +92,6 @@ MusicGlassAndroid/
 # Temporary files
 *.swp
 *~.nib
+
+# Local Netlify folder
+.netlify

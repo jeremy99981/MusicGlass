@@ -1,0 +1,94 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-musicglass}
+      POSTGRES_USER: ${POSTGRES_USER:-musicglass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-musicglass-local}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-musicglass} -d ${POSTGRES_DB:-musicglass}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./services/api
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-musicglass}
+      DB_USER: ${POSTGRES_USER:-musicglass}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-musicglass-local}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-development-secret-change-before-production}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,https://musicglass-pwa-test-20260616135652.netlify.app}
+      YOUTUBE_COOKIE_HEADER: ${YOUTUBE_COOKIE_HEADER:-}
+      YOUTUBE_AUTH_HEADER: ${YOUTUBE_AUTH_HEADER:-}
+      YOUTUBE_VISITOR_DATA: ${YOUTUBE_VISITOR_DATA:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URL: ${GOOGLE_OAUTH_REDIRECT_URL:-}
+      PUBLIC_WEB_APP_URL: ${PUBLIC_WEB_APP_URL:-https://musicglass-pwa-test-20260616135652.netlify.app}
+      PORT: 8081
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: /api
+    depends_on: [api]
+
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports: ["${PWA_PORT:-8090}:80"]
+    volumes:
+      - ./infrastructure/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [web, api]
+
+  # Stable public access. Create a remotely-managed Cloudflare Tunnel whose
+  # public hostname points to http://proxy:80, then set CLOUDFLARE_TUNNEL_TOKEN.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["remote"]
+    command: tunnel --no-autoupdate --protocol http2 run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [proxy]
+    restart: unless-stopped
+
+  # Zero-account preview. Its random URL changes whenever the container restarts.
+  tunnel-test:
+    image: cloudflare/cloudflared:latest
+    profiles: ["test-remote"]
+    command: tunnel --no-autoupdate --protocol http2 --url http://proxy:80
+    depends_on: [proxy]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
