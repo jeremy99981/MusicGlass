@@ -33,7 +33,7 @@ function radioItemToTrack(item: unknown): Track | null {
 const RECOMMENDATION_TARGET = 28;
 const RECOMMENDATION_FETCH_LIMIT = 4;
 const RECOMMENDATION_RETRY_LIMIT = 3;
-type ResumePlaybackSource = "ui" | "media-session" | "internal";
+type ResumePlaybackSource = "ui" | "media-session" | "internal" | "visibility";
 
 export function AudioEngine() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -108,11 +108,25 @@ export function AudioEngine() {
     setStatus("loading");
 
     try {
-      activatePlaybackAudioSession(existingAudio, volume);
+      await activatePlaybackAudioSession(existingAudio, volume);
+
+      // A backgrounded WKWebView can leave the AVAudioSession route dead
+      // while the <audio> element still looks alive to JS (currentTime
+      // keeps advancing, no error/ended fires) — simply calling play()
+      // again is a no-op for WebKit in that state. A real pause()->play()
+      // transition is what actually re-engages the hardware route (this
+      // matches manually tapping pause then play, which does restore
+      // sound), so force that cycle for every resume that isn't a fresh
+      // track load.
+      if (source !== "internal") {
+        suppressInternalPauseRef.current = true;
+        existingAudio.pause();
+      }
 
       const result = await resumeMediaElement({
         audio: existingAudio,
         fallbackPosition,
+        forceRecovery: source === "visibility",
         isCurrent: () => (
           playAttemptRef.current === attempt
           && nativeDesiredPlayingRef.current
@@ -191,7 +205,7 @@ export function AudioEngine() {
     audio.currentTime = 0;
     loadedTrackIdRef.current = selected.id;
     trackIdRef.current = selected.id;
-    activatePlaybackAudioSession(audio, usePlaybackStore.getState().volume);
+    void activatePlaybackAudioSession(audio, usePlaybackStore.getState().volume);
     setStatus("loading");
     publishCurrentMediaMetadata();
     suppressInternalPauseRef.current = false;
@@ -342,7 +356,7 @@ export function AudioEngine() {
           suppressInternalPauseRef.current = true;
           audio.src = freshSource.toString();
           audio.load();
-          activatePlaybackAudioSession(audio, usePlaybackStore.getState().volume);
+          void activatePlaybackAudioSession(audio, usePlaybackStore.getState().volume);
           suppressInternalPauseRef.current = false;
           return resumePlayback({ source: "internal" });
         })
@@ -406,7 +420,7 @@ export function AudioEngine() {
         }
 
         if (desiredPlaying) {
-          activatePlaybackAudioSession(audio, usePlaybackStore.getState().volume);
+          void activatePlaybackAudioSession(audio, usePlaybackStore.getState().volume);
           suppressInternalPauseRef.current = false;
           void resumePlayback({ source: "internal" });
         } else {
@@ -447,7 +461,7 @@ export function AudioEngine() {
     if (!audio || !current) return;
     if (isPlaying) {
       if (audio.paused && audio.currentSrc) {
-        activatePlaybackAudioSession(audio, volume);
+        void activatePlaybackAudioSession(audio, volume);
         void resumePlayback({ source: "ui" });
       }
     } else {
@@ -553,22 +567,33 @@ export function AudioEngine() {
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
 
-    const restoreRemoteControls = () => configureRemoteControls();
-    const restoreVisibleRemoteControls = () => {
-      if (document.visibilityState === "visible") restoreRemoteControls();
+    // A backgrounded WKWebView can silently kill the AVAudioSession route
+    // without ever firing a `pause` event on the <audio> element, so
+    // `audio.paused` cannot be trusted to decide whether playback needs to
+    // be reactivated here. If the store still says we should be playing,
+    // force a real resume (with forced recovery, see resumePlayback) rather
+    // than only re-registering the MediaSession action handlers.
+    const reactivateOnForeground = () => {
+      configureRemoteControls();
+      if (usePlaybackStore.getState().isPlaying) {
+        void resumePlayback({ source: "visibility" });
+      }
+    };
+    const reactivateIfVisible = () => {
+      if (document.visibilityState === "visible") reactivateOnForeground();
     };
 
-    restoreRemoteControls();
-    window.addEventListener("pageshow", restoreRemoteControls);
-    document.addEventListener("visibilitychange", restoreVisibleRemoteControls);
+    reactivateOnForeground();
+    window.addEventListener("pageshow", reactivateOnForeground);
+    document.addEventListener("visibilitychange", reactivateIfVisible);
 
     return () => {
-      window.removeEventListener("pageshow", restoreRemoteControls);
-      document.removeEventListener("visibilitychange", restoreVisibleRemoteControls);
+      window.removeEventListener("pageshow", reactivateOnForeground);
+      document.removeEventListener("visibilitychange", reactivateIfVisible);
       if (!("mediaSession" in navigator)) return;
       clearMediaSessionActions(navigator.mediaSession);
     };
-  }, [configureRemoteControls]);
+  }, [configureRemoteControls, resumePlayback]);
 
   return (
     <>

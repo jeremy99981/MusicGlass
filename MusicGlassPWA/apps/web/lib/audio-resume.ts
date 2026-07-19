@@ -9,6 +9,12 @@ type ResumeMediaElementInput = {
   progressionTimeoutMs?: number;
   minimumProgressSeconds?: number;
   onRecoveryEvent?: (event: AudioRecoveryEvent, reason?: string) => void;
+  // WebKit can keep decoding (currentTime advances) after a foreground
+  // interruption while the AVAudioSession route stays dead, so the
+  // progression check alone is not a trustworthy signal after a
+  // background→foreground transition. Skip straight to the reload/recovery
+  // path in that case instead of trusting a false-positive "resumed".
+  forceRecovery?: boolean;
 };
 
 export type ResumeMediaElementResult = "resumed" | "reloaded" | "failed" | "cancelled";
@@ -86,6 +92,7 @@ export async function resumeMediaElement({
   progressionTimeoutMs = 1300,
   minimumProgressSeconds = 0.1,
   onRecoveryEvent,
+  forceRecovery = false,
 }: ResumeMediaElementInput): Promise<ResumeMediaElementResult> {
   const positionBeforePlay = Number.isFinite(audio.currentTime)
     ? audio.currentTime
@@ -95,7 +102,7 @@ export async function resumeMediaElement({
   // reserved for WebKit's false-positive success where playback never advances.
   await audio.play();
   if (!isCurrent()) return "cancelled";
-  if (await isActuallyProgressing(audio, positionBeforePlay, progressionTimeoutMs, minimumProgressSeconds)) {
+  if (!forceRecovery && await isActuallyProgressing(audio, positionBeforePlay, progressionTimeoutMs, minimumProgressSeconds)) {
     return isCurrent() ? "resumed" : "cancelled";
   }
   if (!isCurrent() || audio.ended) return "cancelled";
