@@ -1,9 +1,28 @@
 type AudioContextCtor = typeof AudioContext;
 
+type WirelessPlaybackElement = HTMLMediaElement & {
+  webkitCurrentPlaybackTargetIsWireless?: boolean;
+};
+
 function getAudioContextCtor(): AudioContextCtor | null {
   if (typeof window === "undefined") return null;
   const withWebkit = window as typeof window & { webkitAudioContext?: AudioContextCtor };
   return withWebkit.AudioContext || withWebkit.webkitAudioContext || null;
+}
+
+// AirPlay ("external playback") is a native HTMLMediaElement feature. Once a
+// media element's output is captured into a Web Audio graph via
+// createMediaElementSource(), WebKit can lose track of that element as the
+// authoritative source of the externally-playing route, which is what feeds
+// the system Now Playing widget. A paused session then gets displaced by
+// whatever the AirPlay receiver (e.g. an Apple TV) reports as its own Now
+// Playing info instead of staying on this app. That capture is also
+// permanent for the element's lifetime, so the safest thing is to never
+// create the graph at all while AirPlay is active — local backgrounded
+// playback (the scenario this graph exists for) doesn't apply to an
+// AirPlay route anyway, since the receiver owns playback continuity there.
+function isPlayingWirelessly(audio: HTMLMediaElement) {
+  return Boolean((audio as WirelessPlaybackElement).webkitCurrentPlaybackTargetIsWireless);
 }
 
 let sharedContext: AudioContext | null = null;
@@ -41,6 +60,7 @@ function ensureAudioGraph(audio: HTMLMediaElement): AudioContext | null {
 }
 
 export async function resumeAudioContext(audio: HTMLMediaElement) {
+  if (isPlayingWirelessly(audio)) return;
   const context = ensureAudioGraph(audio);
   if (!context) return;
   if (context.state === "running") return;
