@@ -10,7 +10,6 @@ import { highResolutionArtwork } from "@/lib/youtube";
 import {
   clearMediaSessionActions,
   configureMediaSessionActions,
-  prefersTrackNavigationOnly,
 } from "@/lib/media-session";
 import { useSharedSessionStore } from "@/store/shared-session-store";
 
@@ -214,11 +213,10 @@ export function AudioEngine() {
 
   const configureRemoteControls = useCallback(() => {
     if (!("mediaSession" in navigator)) return;
-    const useNativeAppleTransport = prefersTrackNavigationOnly(navigator);
 
     configureMediaSessionActions({
       mediaSession: navigator.mediaSession,
-      enableSeekTo: !useNativeAppleTransport,
+      enableSeekTo: true,
       enableTransportHandlers: true,
       play: () => resumePlayback({ source: "media-session" }),
       pause: () => {
