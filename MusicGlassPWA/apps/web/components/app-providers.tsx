@@ -12,7 +12,7 @@ import { SharedSessionProvider } from "./shared-session-provider";
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false } } }));
   return (
-    <ThemeProvider forcedTheme="light" enableSystem={false} storageKey="musicglass-theme">
+    <ThemeProvider forcedTheme="dark" enableSystem={false} storageKey="musicglass-theme">
       <ReducedMotionProvider>
         <QueryClientProvider client={queryClient}>
           <AudioEngine />

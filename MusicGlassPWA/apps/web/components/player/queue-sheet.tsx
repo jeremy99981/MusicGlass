@@ -147,7 +147,7 @@ export function QueueSheet() {
             transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.2, 0.8, 0.2, 1] }}
           >
             <Button variant="ghost" className="queue-handle" aria-label="Glisser ou toucher pour fermer la file d’attente" onClick={() => setQueueOpen(false)}>
-              <GripHorizontal size={32} />
+              <GripHorizontal size={30} />
             </Button>
             <header className="queue-header">
               <div>
@@ -155,7 +155,7 @@ export function QueueSheet() {
                 <h2 id={titleId}>File d’attente</h2>
               </div>
               <Button variant="ghost" onClick={() => setQueueOpen(false)} aria-label="Fermer">
-                <X size={22} />
+                <X size={20} />
               </Button>
             </header>
 

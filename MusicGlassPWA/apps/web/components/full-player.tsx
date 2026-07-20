@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { Button } from "@appica/ui-react/button";
 import { Skeleton } from "@appica/ui-react/skeleton";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { addLibraryLike } from "@/lib/api";
 import { usePlaybackStore } from "@/store/playback-store";
 import { PlayerHeader } from "./player/player-header";
@@ -40,6 +40,17 @@ export function FullPlayer() {
   const reduceMotion = useReducedMotion();
   const [likedTrackId, setLikedTrackId] = useState<string | null>(null);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.add("player-overlay-open");
+    document.body.classList.add("player-overlay-open");
+
+    return () => {
+      document.documentElement.classList.remove("player-overlay-open");
+      document.body.classList.remove("player-overlay-open");
+    };
+  }, []);
+
   const track = state.current;
   if (!track) return null;
   const liked = likedTrackId === track.id;
@@ -115,29 +126,8 @@ export function FullPlayer() {
             </Button>
           </header>
 
-          <div className="fp-mobile-actions" aria-label="Actions du morceau">
-            <Button
-              variant="ghost"
-              className={liked ? "fp-mobile-action-active" : ""}
-              aria-label={liked ? "Titre aimé" : "Aimer"}
-              aria-pressed={liked}
-              onClick={likeTrack}
-            >
-              <Heart size={24} fill={liked ? "currentColor" : "none"} aria-hidden="true" />
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => state.setQueueOpen(true)}
-              aria-label={`Ouvrir la file d’attente, ${upcomingCount} titre${upcomingCount === 1 ? "" : "s"} à suivre`}
-              aria-controls="playback-queue"
-              aria-expanded={state.queueOpen}
-            >
-              <ListMusic size={24} aria-hidden="true" />
-              <span aria-hidden="true">{upcomingCount}</span>
-            </Button>
-          </div>
-
           <PlayerTimeline />
+          <PlayerControls />
           <aside
             className="fp-secondary-actions"
             id="full-player-context"
@@ -158,7 +148,6 @@ export function FullPlayer() {
               {queuePosition} / {queueLength} · {upcomingCount > 0 ? `${upcomingCount} à suivre` : "fin de la file"}
             </span>
           </aside>
-          <PlayerControls />
           {nextTrack && (
             <Button
               variant="ghost"

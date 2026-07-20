@@ -1,43 +1,44 @@
 "use client";
 
-import { Button, Thumbnail } from "@appica/ui-react";
-import { MoreHorizontal, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import type { Track } from "@/lib/catalog";
 import { handleArtworkError } from "@/lib/artwork";
+import styles from "@/components/details/nocturne-details.module.css";
 
-export function TrackRow({ track, index, onPlay }: { track: Track; index: number; onPlay: () => void }) {
+type TrackRowProps = {
+  track: Track;
+  index: number;
+  onPlay: () => void;
+  variant?: "artist" | "playlist";
+};
+
+function formatDuration(duration: number) {
+  if (!Number.isFinite(duration) || duration <= 0) return "";
+  const minutes = Math.floor(duration / 60);
+  const seconds = Math.floor(duration % 60);
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+export function TrackRow({ track, index, onPlay, variant = "playlist" }: TrackRowProps) {
   return (
-    <article className="track-row relative">
-      <Button
-        type="button"
-        variant="ghost"
-        className="absolute inset-0 z-0 h-auto w-auto rounded-[inherit] p-0"
-        aria-label={`Lire ${track.title}`}
-        onClick={onPlay}
-      />
-      <div className="track-art pointer-events-none z-1">
-        {track.artwork && (
-          <Thumbnail
-            src={track.artwork}
-            alt=""
-            className="size-full!"
-            // Thumbnail's native image slot keeps the catalog retry handler intact.
-            render={
-              // eslint-disable-next-line @next/next/no-img-element
-              <img alt="" loading="lazy" onError={handleArtworkError} />
-            }
-          />
-        )}
-        <span><Play size={18} fill="currentColor" /></span>
-      </div>
-      <div className="track-meta pointer-events-none z-1">
-        <strong>{track.title}</strong>
-        <span>{track.artist}</span>
-      </div>
-      <span className="track-index pointer-events-none z-1">{String(index + 1).padStart(2, "0")}</span>
-      <Button type="button" variant="ghost" size="icon-sm" className="icon-button z-2" aria-label="Plus d’options">
-        <MoreHorizontal />
-      </Button>
+    <article className={`${styles.trackRow} ${styles[`${variant}TrackRow`]}`}>
+      <button type="button" className={styles.trackButton} aria-label={`Lire ${track.title}`} onClick={onPlay}>
+        <span className={styles.trackIndex}>{index + 1}</span>
+        <span className={styles.trackArtwork}>
+          {track.artwork ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={track.artwork} alt="" loading="lazy" onError={handleArtworkError} />
+          ) : (
+            <span className={styles.artworkFallback} aria-hidden="true" />
+          )}
+          <span className={styles.trackPlay}><Play size={15} fill="currentColor" /></span>
+        </span>
+        <span className={styles.trackMeta}>
+          <strong>{track.title}</strong>
+          <small>{track.artist || (variant === "artist" ? "Titre populaire" : "Artiste")}</small>
+        </span>
+        {track.duration > 0 && <span className={styles.trackDuration}>{formatDuration(track.duration)}</span>}
+      </button>
     </article>
   );
 }

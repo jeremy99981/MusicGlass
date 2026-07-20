@@ -6,15 +6,15 @@
 @source "./**/*.{ts,tsx}";
 
 :root,
-.light {
-  --primary: oklch(0.22 0.025 257);
-  --background: oklch(0.965 0.008 255);
-  --background-subtle: oklch(0.985 0.004 255);
-  --background-muted: oklch(0.94 0.01 255);
-  --foreground: oklch(0.22 0.025 257);
-  --foreground-muted: oklch(0.53 0.025 257);
-  --border: oklch(0.88 0.012 255);
-  --radius: 0.75rem;
+.dark {
+  --primary: #9184d9;
+  --background: #161826;
+  --background-subtle: #1d1f2c;
+  --background-muted: #232532;
+  --foreground: #e9e9ed;
+  --foreground-muted: #9397ab;
+  --border: rgb(233 233 237 / 16%);
+  --radius: 0.5rem;
   --font-sans: var(--font-inter), sans-serif;
 }
 

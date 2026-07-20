@@ -81,7 +81,7 @@ export function HomeView() {
     placeholderData: fallbackHome,
   });
 
-  const { label, greeting } = getGreeting();
+  const { greeting } = getGreeting();
   const matchesFilter = (item: HomeItem) => homeFilter === "Tout"
     || (homeFilter === "Musique" && item.type === "track")
     || (homeFilter === "Playlists" && item.type !== "track");
@@ -131,11 +131,11 @@ export function HomeView() {
     <div className={`page home-page ${styles.page}`}>
       <header className={styles.topbar}>
         <div className={styles.topbarCopy}>
-          <span className={styles.day} suppressHydrationWarning>{label}</span>
-          <h1>Accueil</h1>
+          <span className={styles.day} suppressHydrationWarning>{greeting}</span>
+          <h1>Écouter</h1>
         </div>
         <div className={styles.topbarActions}>
-          <Avatar className={styles.avatar} shape="rounded" aria-hidden="true">
+          <Avatar className={styles.avatar} aria-hidden="true">
             <AvatarFallback>MG</AvatarFallback>
           </Avatar>
           <Link className={styles.settings} href="/settings" aria-label="Réglages"><Settings2 size={20} /></Link>
@@ -156,10 +156,6 @@ export function HomeView() {
             <Play size={19} fill="currentColor" /> Écouter
           </Button>
         </motion.div>
-        <Button type="button" variant="ghost" className={`${styles.featureArtwork} aspect-square`} onClick={() => handleItemClick(featured)} aria-label={`Écouter ${featured.title}`}>
-          <Image src={featured.artwork} alt="" fill sizes="(max-width: 639px) 116px, 330px" unoptimized onError={handleArtworkError} />
-          <span><Play size={21} fill="currentColor" /></span>
-        </Button>
       </section>
 
       <ButtonGroup className={styles.filters} aria-label="Filtres de l’accueil">
@@ -171,6 +167,7 @@ export function HomeView() {
       <section className={styles.quickSection} aria-labelledby="quick-title">
         <div className={styles.sectionHeading}>
           <div><span>Reprendre en un geste</span><h2 id="quick-title">Vos raccourcis</h2></div>
+          <ArrowRight size={18} aria-hidden="true" />
         </div>
         <motion.div className={`home-quick-grid ${styles.quickGrid}`} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38 }}>
           {quickItems.map((item) => (
@@ -187,6 +184,7 @@ export function HomeView() {
         <section className={styles.artistSection} aria-labelledby="artists-title">
           <div className={styles.sectionHeading}>
             <div><span>Votre constellation</span><h2 id="artists-title">Artistes à retrouver</h2></div>
+            <ArrowRight size={18} aria-hidden="true" />
           </div>
           <ScrollArea orientation="horizontal" scrollbarVisibility="never" className={styles.artistScroll}>
             <div className={styles.artistRail}>
@@ -209,7 +207,9 @@ export function HomeView() {
           <section key={section.title} className={`shelf ${styles.shelf}`}>
             <div className={styles.sectionHeading}>
               <div><span>{sectionIndex === 0 ? "Choisi pour vous" : "Explorez autrement"}</span><h2>{section.title}</h2></div>
-              <ArrowRight size={20} aria-hidden="true" />
+              <Link className={styles.collectionLink} href={`/collection?title=${encodeURIComponent(section.title)}`} aria-label={`Voir toute la collection ${section.title}`}>
+                <ArrowRight size={20} aria-hidden="true" />
+              </Link>
             </div>
             <ScrollArea orientation="horizontal" scrollbarVisibility="never" className={styles.cardScroll}>
               <div className={`shelf-scroll ${styles.cardRail}`}>

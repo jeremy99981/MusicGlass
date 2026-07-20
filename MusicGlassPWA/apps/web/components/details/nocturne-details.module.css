@@ -1,0 +1,276 @@
+.detailPage,
+.artistPage {
+  --nocturne-bg: #161826;
+  --nocturne-surface: #232532;
+  --nocturne-text: #e9e9ed;
+  --nocturne-muted: #9397ab;
+  --nocturne-accent: #9184d9;
+  --nocturne-accent-light: #d2cefd;
+  --nocturne-divider: rgb(233 233 237 / 16%);
+  position: relative;
+  width: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  color: var(--nocturne-text);
+  background: var(--nocturne-bg);
+  font-family: Inter, ui-sans-serif, sans-serif;
+}
+
+.detailPage {
+  padding: calc(env(safe-area-inset-top, 0px) + 96px) 20px calc(118px + env(safe-area-inset-bottom, 0px));
+}
+
+.backButton {
+  position: absolute;
+  z-index: 5;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 12px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  color: var(--nocturne-text);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 50%;
+  background: rgb(22 24 38 / 68%);
+  backdrop-filter: blur(16px) saturate(160%);
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.backButton:active { transform: scale(.94); }
+.backButton:hover { background: rgb(35 37 50 / 90%); }
+
+.detailHeader {
+  display: flex;
+  max-width: 900px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 0 auto;
+}
+
+.detailCover,
+.coverSkeleton {
+  display: block;
+  width: 176px;
+  height: 176px;
+  flex: none;
+  object-fit: cover;
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 65%);
+}
+
+.artworkFallback {
+  background: linear-gradient(145deg, #353b80, #232532 58%, #161826);
+}
+
+.detailCopy { min-width: 0; }
+
+.kicker {
+  display: block;
+  color: var(--nocturne-accent-light);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.detailCopy h1 {
+  max-width: 100%;
+  margin: 4px 0 6px;
+  overflow-wrap: anywhere;
+  color: var(--nocturne-text);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -.015em;
+  line-height: 1.12;
+}
+
+.detailCopy p,
+.artistIdentity p,
+.centered p {
+  margin: 0;
+  color: var(--nocturne-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.primaryPlay {
+  display: inline-flex;
+  min-width: 0;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 22px;
+  color: var(--nocturne-bg);
+  border: 1px solid var(--nocturne-accent);
+  border-radius: 8px;
+  background: var(--nocturne-accent);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 150ms ease, transform 150ms ease;
+}
+
+.detailHeader > .primaryPlay { width: 100%; }
+.primaryPlay:hover { filter: brightness(1.08); }
+.primaryPlay:active { transform: scale(.98); }
+.primaryPlay:disabled { cursor: not-allowed; opacity: .5; }
+
+.trackList {
+  width: calc(100% + 40px);
+  max-width: 940px;
+  margin: 16px -20px 0;
+}
+
+.trackRow {
+  width: 100%;
+  min-width: 0;
+  border-bottom: 1px solid var(--nocturne-divider);
+}
+
+.trackButton {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  color: var(--nocturne-text);
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.trackButton:hover { background: rgb(255 255 255 / 4%); }
+.trackButton:active { background: rgb(145 132 217 / 11%); }
+
+.trackIndex {
+  width: 18px;
+  flex: none;
+  color: #75798c;
+  font-size: 13px;
+  text-align: center;
+}
+
+.trackArtwork {
+  position: relative;
+  display: block;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--nocturne-surface);
+}
+
+.artistTrackRow .trackArtwork { width: 44px; height: 44px; border-radius: 6px; }
+.trackArtwork img, .trackArtwork > .artworkFallback { width: 100%; height: 100%; object-fit: cover; }
+
+.trackPlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgb(0 0 0 / 48%);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.trackButton:hover .trackPlay,
+.trackButton:focus-visible .trackPlay { opacity: 1; }
+
+.trackMeta {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.trackMeta strong,
+.trackMeta small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackMeta strong { font-size: 14px; font-weight: 500; line-height: 1.35; }
+.trackMeta small { margin-top: 1px; color: var(--nocturne-muted); font-size: 12.5px; line-height: 1.4; }
+.trackDuration { flex: none; color: var(--nocturne-muted); font-size: 12.5px; }
+
+.artistHero {
+  position: relative;
+  height: 300px;
+  overflow: hidden;
+  background: var(--nocturne-surface);
+}
+
+.artistHero > img,
+.artistHero > .artworkFallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artistScrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgb(10 9 18 / 15%) 40%, var(--nocturne-bg) 100%); }
+.artistBack { color: #fff; background: rgb(0 0 0 / 45%); }
+
+.artistIdentity {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  left: 20px;
+}
+
+.artistIdentity > span { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #cfd3e5; font-size: 12px; font-weight: 500; }
+.artistIdentity > span svg { color: var(--nocturne-accent); }
+.artistIdentity h1 { margin: 0 0 4px; color: #fff; font-size: 32px; font-weight: 500; letter-spacing: -.015em; line-height: 1.12; }
+.artistActions { display: flex; gap: 10px; padding: 18px 20px 22px; }
+.artistActions .primaryPlay { flex: 1; height: 46px; }
+.artistSection { margin-bottom: 28px; }
+.sectionHeading { padding: 0 20px; }
+.sectionHeading h2 { margin: 2px 0 12px; color: var(--nocturne-text); font-size: 19px; font-weight: 500; line-height: 1.12; }
+.artistSection .trackList { width: 100%; margin: 0; }
+
+.centered { display: grid; min-height: 70dvh; place-items: center; }
+.artistHeroSkeleton { width: 100%; height: 300px; border-radius: 0; }
+.playSkeleton { width: 100%; height: 46px; border-radius: 8px; }
+.titleSkeleton { width: min(320px, 80%); height: 32px; border-radius: 6px; }
+.metaSkeleton { width: min(260px, 60%); height: 18px; border-radius: 4px; }
+.rowSkeleton { display: block; width: 100%; height: 65px; border-radius: 0; border-bottom: 1px solid var(--nocturne-divider); }
+
+@media (max-width: 370px) {
+  .detailPage { padding-right: 16px; padding-left: 16px; }
+  .trackList { width: calc(100% + 32px); margin-right: -16px; margin-left: -16px; }
+  .trackButton { gap: 9px; padding-right: 16px; padding-left: 16px; }
+  .detailCopy h1 { font-size: 24px; }
+}
+
+@media (min-width: 640px) {
+  .detailPage { padding: 88px clamp(32px, 6vw, 76px) 140px; }
+  .detailHeader { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 30px; align-items: end; }
+  .detailCover, .coverSkeleton { width: 220px; height: 220px; grid-row: 1 / 3; }
+  .detailCopy h1 { font-size: clamp(32px, 5vw, 54px); }
+  .detailHeader > .primaryPlay { width: max-content; min-width: 150px; }
+  .trackList { width: 100%; margin: 30px auto 0; }
+  .artistHero { height: min(52vw, 480px); }
+  .artistIdentity { right: clamp(32px, 6vw, 76px); bottom: 36px; left: clamp(32px, 6vw, 76px); }
+  .artistIdentity h1 { font-size: clamp(42px, 7vw, 74px); }
+  .artistActions, .sectionHeading { padding-right: clamp(32px, 6vw, 76px); padding-left: clamp(32px, 6vw, 76px); }
+  .artistSection .trackList { width: min(calc(100% - clamp(64px, 12vw, 152px)), 940px); margin: 0 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backButton, .primaryPlay, .trackButton, .trackPlay { transition: none; }
+}

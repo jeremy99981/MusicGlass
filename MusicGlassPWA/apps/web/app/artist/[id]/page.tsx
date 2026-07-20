@@ -1,12 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Badge } from "@appica/ui-react/badge";
-import { Button } from "@appica/ui-react/button";
 import { Skeleton } from "@appica/ui-react/skeleton";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Play } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo } from "react";
+import styles from "@/components/details/nocturne-details.module.css";
 import { TrackRow } from "@/components/track-row";
 import { fetchPlaylist } from "@/lib/api";
 import { handleArtworkError } from "@/lib/artwork";
@@ -25,9 +24,7 @@ export default function ArtistPage() {
     queryFn: async () => {
       const artist = parsePlaylist(await fetchPlaylist(id));
       const artistName = artist.title === "Playlist" ? artist.artist : artist.title;
-      if (!artistName || artist.tracks.length === 0) {
-        throw new Error("Artist metadata unavailable");
-      }
+      if (!artistName || artist.tracks.length === 0) throw new Error("Artist metadata unavailable");
 
       return {
         name: artistName,
@@ -46,37 +43,13 @@ export default function ArtistPage() {
 
   const primaryTracks = useMemo(() => data?.tracks ?? [], [data?.tracks]);
 
-  if (isLoading) {
-    return (
-      <div className="page artist-page artist-loading-page">
-        <div className="artist-hero-skeleton">
-          <Skeleton className="skeleton-pill skeleton-short" />
-          <Skeleton className="skeleton-line skeleton-title" />
-          <Skeleton className="skeleton-line" />
-        </div>
-        <div className="detail-track-list">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div className="skeleton-row" key={index}>
-              <Skeleton className="skeleton-art" />
-              <div>
-                <Skeleton className="skeleton-line" />
-                <Skeleton className="skeleton-line skeleton-muted" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
+  if (isLoading) return <ArtistSkeleton />;
   if (error || !data) {
     return (
-      <div className="page detail-loading detail-error">
-        <Button onClick={() => router.back()} className="detail-back-inline" variant="ghost">
-          <ArrowLeft size={18} /> Retour
-        </Button>
-        Impossible de charger l’artiste.
-      </div>
+      <main className={`${styles.artistPage} ${styles.centered}`}>
+        <BackButton onBack={() => router.back()} />
+        <p>Impossible de charger l’artiste.</p>
+      </main>
     );
   }
 
@@ -85,52 +58,79 @@ export default function ArtistPage() {
   };
 
   return (
-    <div className="page artist-page">
-      <div className="artist-glow" style={{ backgroundImage: data.image ? `url(${data.image})` : undefined }} />
-      <div className="detail-toolbar">
-        <Button onClick={() => router.back()} className="detail-back artist-back" variant="soft" size="sm">
-          <ArrowLeft size={18} />
-          Retour
-        </Button>
-      </div>
-
-      <header className="artist-hero">
+    <main className={styles.artistPage}>
+      <BackButton onBack={() => router.back()} />
+      <header className={styles.artistHero}>
         {data.image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={data.image} alt={`Portrait de ${data.name}`} className="artist-portrait" onError={handleArtworkError} />
+          <img src={data.image} alt={`Portrait de ${data.name}`} onError={handleArtworkError} />
         ) : (
-          <div className="artist-portrait artwork-fallback" role="img" aria-label={`Portrait de ${data.name}`} />
+          <div className={styles.artworkFallback} role="img" aria-label={`Portrait de ${data.name}`} />
         )}
-        <div className="artist-copy">
+        <div className={styles.artistScrim} />
+        <div className={styles.artistIdentity}>
+          <span>
+            <span aria-hidden="true">✓</span>
+            Artiste
+          </span>
           <h1>{data.name}</h1>
-          <div className="detail-meta">
-            <Badge variant="soft" size="sm">Artiste</Badge>
-            <span>{primaryTracks.length ? `${primaryTracks.length} titres disponibles` : "Discographie et recommandations"}</span>
-          </div>
+          <p>
+            {primaryTracks.length} {primaryTracks.length > 1 ? "titres disponibles" : "titre disponible"}
+          </p>
         </div>
-        <Button className="artist-play" size="lg" onClick={playAll} disabled={!primaryTracks.length}>
-          <Play data-icon="start" size={20} fill="currentColor" />
-          Tout lire
-        </Button>
       </header>
 
+      <div className={styles.artistActions}>
+        <button className={styles.primaryPlay} type="button" onClick={playAll} disabled={!primaryTracks.length}>
+          <Play size={17} fill="currentColor" />
+          Lecture
+        </button>
+      </div>
+
       {primaryTracks.length > 0 && (
-        <section className="artist-section">
-          <div className="section-header">
+        <section className={styles.artistSection}>
+          <div className={styles.sectionHeading}>
+            <span className={styles.kicker}>Discographie</span>
             <h2>Titres populaires</h2>
           </div>
-          <div className="detail-track-list artist-track-list">
-            {primaryTracks.slice(0, 8).map((track, index) => (
+          <div className={styles.trackList}>
+            {primaryTracks.slice(0, 5).map((track, index) => (
               <TrackRow
                 key={`${track.id}-${index}`}
                 track={track}
                 index={index}
+                variant="artist"
                 onPlay={() => playTrack(track, primaryTracks)}
               />
             ))}
           </div>
         </section>
       )}
-    </div>
+    </main>
+  );
+}
+
+function BackButton({ onBack }: { onBack: () => void }) {
+  return (
+    <button type="button" className={styles.backButton} onClick={onBack} aria-label="Retour">
+      <ArrowLeft size={19} />
+    </button>
+  );
+}
+
+function ArtistSkeleton() {
+  return (
+    <main className={styles.artistPage}>
+      <Skeleton className={styles.artistHeroSkeleton} />
+      <div className={styles.artistActions}>
+        <Skeleton className={styles.playSkeleton} />
+      </div>
+      <div className={styles.trackList}>
+        <Skeleton className={styles.titleSkeleton} />
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Skeleton className={styles.rowSkeleton} key={index} />
+        ))}
+      </div>
+    </main>
   );
 }

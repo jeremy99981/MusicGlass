@@ -8,7 +8,7 @@ export function PlayerHeader({ eyebrow, title }: { eyebrow: string; title: strin
   return (
     <header className="fp-header">
       <Button variant="ghost" className="fp-close" onClick={() => setPlayerOpen(false)} aria-label="Réduire le lecteur">
-        <ChevronDown size={28} />
+        <ChevronDown size={24} />
       </Button>
       <span className="fp-header-label">
         <small>{eyebrow}</small>

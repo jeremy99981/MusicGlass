@@ -10,9 +10,9 @@
   display: flex;
   width: var(--sidebar-width);
   flex-direction: column;
-  padding: 28px 18px 24px;
+  padding: 24px 16px 22px;
   border-right: 1px solid var(--line);
-  background: rgb(255 255 255 / 94%);
+  background: rgb(22 24 38 / 94%);
   backdrop-filter: blur(22px);
 }
 
@@ -22,8 +22,8 @@
   gap: 12px;
   padding: 0 10px 26px;
   font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.035em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
 .brand-mark {
@@ -31,9 +31,9 @@
   width: 38px;
   height: 38px;
   place-items: center;
-  color: #fff;
-  border-radius: 12px;
-  background: var(--ink);
+  color: var(--canvas);
+  border-radius: 8px;
+  background: var(--accent-bright);
 }
 
 .side-nav {
@@ -49,9 +49,9 @@
   gap: 13px;
   padding: 0 13px;
   color: var(--muted);
-  border-radius: 13px;
+  border-radius: 8px;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 500;
   transition: color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
@@ -63,7 +63,9 @@
 }
 
 .side-nav a.active {
-  font-weight: 800;
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 var(--accent);
 }
 
 .sidebar-library {

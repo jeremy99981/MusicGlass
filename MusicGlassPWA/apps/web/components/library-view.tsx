@@ -1,33 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@appica/ui-react/badge";
 import { Button } from "@appica/ui-react/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@appica/ui-react/dialog";
-import { Input } from "@appica/ui-react/input";
 import { Skeleton } from "@appica/ui-react/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Cloud, ExternalLink, Heart, LoaderCircle, Music2, Plus, Radio, ShieldCheck, WifiOff } from "lucide-react";
+import { CheckCircle2, Cloud, ExternalLink, Heart, LoaderCircle, MoreHorizontal, Plus, Radio, ShieldCheck, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { connectYouTubeProvider, createLibraryPlaylist, fetchLibrary } from "@/lib/api";
 import { collections } from "@/lib/catalog";
+import { CreatePlaylistSheet } from "./create-playlist-sheet";
 import { SharedSessionPanel } from "./shared-session-panel";
+import styles from "./library-view.module.css";
+
+type LibraryTab = "Playlists" | "Artistes" | "Titres aimés";
+
+const coverGradients = [
+  "linear-gradient(145deg,#6960a6,#22253a)",
+  "linear-gradient(145deg,#2f6e74,#171928)",
+  "linear-gradient(145deg,#8a536f,#272034)",
+  "linear-gradient(145deg,#6c593f,#22232f)",
+];
 
 export function LibraryView() {
   const queryClient = useQueryClient();
-  const [playlistName, setPlaylistName] = useState("");
+  const [activeTab, setActiveTab] = useState<LibraryTab>("Playlists");
+  const [createOpen, setCreateOpen] = useState(false);
   const [oauthUrl, setOauthUrl] = useState("");
   const [providerNotice, setProviderNotice] = useState("");
-  const library = useQuery({
-    queryKey: ["library"],
-    queryFn: fetchLibrary,
-    retry: false,
-  });
+  const library = useQuery({ queryKey: ["library"], queryFn: fetchLibrary, retry: false });
 
   const createPlaylist = useMutation({
     mutationFn: createLibraryPlaylist,
     onSuccess: () => {
-      setPlaylistName("");
+      setCreateOpen(false);
       queryClient.invalidateQueries({ queryKey: ["library"] });
     },
   });
@@ -60,8 +66,27 @@ export function LibraryView() {
   const likes = library.data?.likes ?? [];
   const playlists = library.data?.playlists ?? [];
   const provider = library.data?.provider;
-  const fallbackPlaylists = collections.concat(collections).slice(0, 4);
   const isAuthenticated = !library.isError;
+  const fallbackPlaylists = collections.concat(collections).slice(0, 6);
+  const displayedPlaylists = playlists.length ? playlists : fallbackPlaylists;
+
+  const playlistRailItems = displayedPlaylists.slice(0, 5).map((item, index) => ({
+      title: "name" in item ? item.name : item.title,
+      subtitle: "name" in item ? `${item.song_count ?? 0} titres` : item.subtitle,
+      artwork: "",
+      color: "name" in item ? coverGradients[index % coverGradients.length] : item.color,
+  }));
+  const likedRailItems = likes.slice(0, 5).map((like) => ({
+      title: like.song.title,
+      subtitle: like.song.artist,
+      artwork: like.song.cover_url ?? "",
+      color: coverGradients[0],
+  }));
+  const railItems = {
+    mostPlayed: playlistRailItems,
+    recent: likedRailItems.length ? likedRailItems : playlistRailItems.slice().reverse(),
+  };
+
   const providerTitle = !isAuthenticated
     ? "Connectez MusicGlass"
     : provider?.playback_ready
@@ -71,187 +96,136 @@ export function LibraryView() {
         : provider?.oauth_available
           ? "Connexion privée disponible"
           : "Lecture publique sans compte";
-  const providerText = !isAuthenticated
-    ? "Connectez MusicGlass pour retrouver les likes et playlists enregistrés dans notre backend."
-    : provider?.playback_ready
-      ? "Le backend possède des credentials serveur. Les flux privés et publics peuvent être résolus côté API."
-      : provider?.oauth_connected
-        ? "Compte Google lié. Les données privées YouTube Music demandent encore une résolution fournisseur autorisée côté serveur."
-        : provider?.oauth_available
-          ? "La PWA peut ouvrir Google, mais elle ne peut pas lire les cookies YouTube Music natifs comme Flutter/Metrolist. La synchro privée dépend du backend."
-          : "Metrolist récupère les likes/playlists privés via WebView native et cookies SAPISID. En PWA, on garde la lecture publique et les likes/playlists MusicGlass backend.";
 
   const openGoogleOAuth = () => {
     if (!oauthUrl) return;
     const popup = window.open(oauthUrl, "musicglass-youtube-oauth", "popup=yes,width=520,height=720");
-    if (!popup) {
-      window.location.href = oauthUrl;
-      return;
-    }
-    popup.focus();
+    if (!popup) window.location.href = oauthUrl;
+    else popup.focus();
   };
 
   return (
-    <div className="page library-page">
-      <header className="topbar">
-        <div>
-          <span className="eyebrow">Votre univers</span>
+    <main className={styles.page}>
+      <header className={styles.header}>
+        <div className={styles.titleRow}>
           <h1>Bibliothèque</h1>
+          <button className={styles.addButton} type="button" onClick={() => setCreateOpen(true)} aria-label="Créer une playlist">
+            <Plus size={24} />
+          </button>
         </div>
-        <Button variant="ghost" size="icon-md" className="round-action" onClick={() => setPlaylistName((value) => value || "Nouvelle playlist")}>
-          <Plus />
-        </Button>
+        <div className={styles.tabs} aria-label="Type de contenu">
+          {(["Playlists", "Artistes", "Titres aimés"] as LibraryTab[]).map((tab) => (
+            <button key={tab} type="button" className={activeTab === tab ? styles.activeTab : ""} aria-pressed={activeTab === tab} onClick={() => setActiveTab(tab)}>
+              {tab}
+            </button>
+          ))}
+        </div>
       </header>
 
-      {library.isError && (
-        <section className="library-auth-card">
-          <WifiOff />
-          <div>
-            <strong>Connectez-vous pour synchroniser votre bibliothèque.</strong>
-            <p>Vos likes et playlists MusicGlass sont sauvegardés dans le backend dès que votre compte est actif.</p>
-          </div>
-          <Link href="/login">Connexion</Link>
-        </section>
-      )}
-
-      <section className={`provider-card ${provider?.connected ? "provider-card-connected" : ""}`}>
-        <div className="provider-icon">{provider?.playback_ready ? <CheckCircle2 /> : provider?.oauth_connected ? <ShieldCheck /> : <Cloud />}</div>
-        <div>
-          <Badge variant="soft" size="sm">Fournisseur musique</Badge>
-          <strong>{providerTitle}</strong>
-          <p>{providerText}</p>
-        </div>
-        {isAuthenticated ? (
-          <Button
-            variant="primary"
-            onClick={() => {
-              connectProvider.mutate();
-            }}
-            disabled={connectProvider.isPending || (!provider?.oauth_available && !provider?.oauth_connected && !provider?.playback_ready)}
-          >
-            {connectProvider.isPending ? <LoaderCircle className="spin" size={17} /> : <Radio size={17} />}
-            {provider?.oauth_connected ? "Vérifier" : provider?.oauth_available ? "Synchroniser" : provider?.playback_ready ? "Prêt" : "Privé indisponible"}
-          </Button>
+      <div className={styles.content}>
+        {library.isLoading ? <LibrarySkeleton /> : activeTab === "Playlists" ? (
+          <>
+            <MediaRail kicker="Vos habitudes" title="Les plus écoutés" items={railItems.mostPlayed} />
+            <MediaRail kicker="Reprendre" title="Écoutés récemment" items={railItems.recent} />
+            <section className={styles.section}>
+              <SectionTitle kicker="Tout" title="Vos playlists" />
+              <div className={styles.rows}>
+                {displayedPlaylists.map((item, index) => {
+                  const backendPlaylist = "name" in item;
+                  const title = backendPlaylist ? item.name : item.title;
+                  const subtitle = backendPlaylist ? `${item.song_count ?? 0} titres` : item.subtitle;
+                  const row = (
+                    <>
+                      <Cover title={title} color={backendPlaylist ? coverGradients[index % coverGradients.length] : item.color} size="row" />
+                      <span className={styles.rowCopy}><strong>{title}</strong><small>{subtitle}</small></span>
+                      <MoreHorizontal size={18} aria-hidden="true" />
+                    </>
+                  );
+                  return backendPlaylist ? <Link className={styles.row} href={`/playlist/${item.id}`} key={item.id}>{row}</Link> : <div className={styles.row} key={`${title}-${index}`}>{row}</div>;
+                })}
+              </div>
+            </section>
+          </>
+        ) : activeTab === "Titres aimés" ? (
+          <section className={styles.section}>
+            <SectionTitle kicker="Votre collection" title="Titres aimés" />
+            <div className={styles.rows}>
+              {likes.map((like) => (
+                <div className={styles.row} key={like.id}>
+                  <Cover title={like.song.title} artwork={like.song.cover_url} size="row" />
+                  <span className={styles.rowCopy}><strong>{like.song.title}</strong><small>{like.song.artist}</small></span>
+                  <Heart size={17} fill="currentColor" aria-hidden="true" />
+                </div>
+              ))}
+              {!likes.length && <EmptyState text="Vos titres aimés apparaîtront ici." />}
+            </div>
+          </section>
         ) : (
-          <Link href="/login">Connexion</Link>
+          <section className={styles.section}>
+            <SectionTitle kicker="Votre collection" title="Artistes" />
+            <EmptyState text="Les artistes de vos titres aimés apparaîtront ici." />
+          </section>
         )}
-      </section>
 
-      {(providerNotice || connectProvider.data?.status === "server_setup_required") && (
-        <div className="library-warning">
-          {providerNotice ||
-            "Les likes/playlists privés YouTube Music nécessitent une authentification fournisseur réelle. La lecture publique reste disponible sans compte."}
-        </div>
-      )}
+        {library.isError && (
+          <div className={styles.authNotice}><WifiOff size={18} /><span>Connectez-vous pour synchroniser cette bibliothèque.</span><Link href="/login">Connexion</Link></div>
+        )}
+
+        <details className={styles.services}>
+          <summary>Services connectés</summary>
+          <div className={styles.providerRow}>
+            <span className={styles.serviceIcon}>{provider?.playback_ready ? <CheckCircle2 /> : provider?.oauth_connected ? <ShieldCheck /> : <Cloud />}</span>
+            <span><strong>{providerTitle}</strong><small>YouTube Music et lecture publique</small></span>
+            {isAuthenticated ? (
+              <Button size="sm" onClick={() => connectProvider.mutate()} disabled={connectProvider.isPending || (!provider?.oauth_available && !provider?.oauth_connected && !provider?.playback_ready)}>
+                {connectProvider.isPending ? <LoaderCircle className="spin" size={15} /> : <Radio size={15} />} Gérer
+              </Button>
+            ) : <Link href="/login">Connexion</Link>}
+          </div>
+          {providerNotice && <p className={styles.notice}>{providerNotice}</p>}
+          <SharedSessionPanel compact />
+        </details>
+      </div>
+
+      <CreatePlaylistSheet
+        open={createOpen}
+        pending={createPlaylist.isPending}
+        error={createPlaylist.error instanceof Error ? createPlaylist.error.message : ""}
+        onClose={() => setCreateOpen(false)}
+        onCreate={(name) => createPlaylist.mutate(name)}
+      />
+
       <Dialog open={Boolean(oauthUrl)} onOpenChange={(open) => { if (!open) setOauthUrl(""); }}>
         <DialogContent aria-label="Connexion Google" closeLabel="Fermer la connexion Google" className="w-[min(100%,32rem)]">
-          <DialogHeader>
-            <Badge variant="soft" size="sm" className="w-fit">Connexion Google</Badge>
-            <DialogTitle>Associer YouTube Music</DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            <DialogDescription>Une fenêtre Google va s’ouvrir. Une fois validée, MusicGlass reviendra automatiquement ici.</DialogDescription>
-          </DialogBody>
-          <DialogFooter>
-            <DialogClose render={<Button variant="secondary" />}>Annuler</DialogClose>
-            <Button onClick={openGoogleOAuth}><ExternalLink size={17} /> Ouvrir Google</Button>
-          </DialogFooter>
+          <DialogHeader><DialogTitle>Associer YouTube Music</DialogTitle></DialogHeader>
+          <DialogBody><DialogDescription>Une fenêtre Google va s’ouvrir. Après validation, MusicGlass reviendra ici.</DialogDescription></DialogBody>
+          <DialogFooter><DialogClose render={<Button variant="secondary" />}>Annuler</DialogClose><Button onClick={openGoogleOAuth}><ExternalLink size={17} /> Ouvrir Google</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <section className="library-session-card">
-        <div className="library-session-copy">
-          <span>Écoute ensemble</span>
-          <h2>Session partagée</h2>
-          <p>Créez une session ou rejoignez un ami depuis votre bibliothèque, sans polluer l’accueil.</p>
-        </div>
-        <SharedSessionPanel />
-      </section>
-
-      <div className="stat-grid">
-        <article>
-          <Heart fill="currentColor" />
-          <strong>{library.isLoading ? <Skeleton className="h-8 w-12" aria-label="Chargement des titres aimés" /> : likes.length}</strong>
-          <span>Titres aimés</span>
-        </article>
-        <article>
-          <Music2 />
-          <strong>{library.isLoading ? <Skeleton className="h-8 w-12" aria-label="Chargement des playlists" /> : playlists.length}</strong>
-          <span>Playlists</span>
-        </article>
-      </div>
-
-      {likes[0] && (
-        <section className="library-liked-strip">
-          <span>Dernier like</span>
-          <strong>{likes[0].song.title}</strong>
-          <small>{likes[0].song.artist}</small>
-        </section>
-      )}
-
-      <section className="library-create">
-        <div>
-          <h2>Créer une playlist</h2>
-          <p>Ajoutez ensuite des titres depuis le lecteur ou les résultats de recherche.</p>
-        </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const name = playlistName.trim();
-            if (name) createPlaylist.mutate(name);
-          }}
-        >
-          <Input value={playlistName} onChange={(event) => setPlaylistName(event.target.value)} placeholder="Nom de playlist" aria-label="Nom de playlist" />
-          <Button type="submit" disabled={createPlaylist.isPending || playlistName.trim().length === 0}>
-            {createPlaylist.isPending ? "Création..." : "Créer"}
-          </Button>
-        </form>
-      </section>
-
-      <div className="section-header">
-        <h2>Playlists</h2>
-        <Button variant="ghost" onClick={() => setPlaylistName("Nouvelle playlist")}>Nouvelle playlist</Button>
-      </div>
-      <div className="library-grid">
-        {(playlists.length ? playlists : fallbackPlaylists).map((item, index) => {
-          const isBackendPlaylist = "name" in item;
-          const title = isBackendPlaylist ? item.name : item.title;
-          const subtitle = isBackendPlaylist ? `${item.song_count ?? 0} titres` : item.subtitle;
-          const color = isBackendPlaylist ? "linear-gradient(145deg,#263443,#8bb7aa)" : item.color;
-          return (
-            <article key={`${title}-${index}`}>
-              <div className="library-cover" style={{ background: color }}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-              </div>
-              <strong>{title}</strong>
-              <small>{subtitle}</small>
-            </article>
-          );
-        })}
-      </div>
-
-      <div className="section-header library-liked-header">
-        <h2>Derniers likes</h2>
-      </div>
-      <div className="library-liked-list">
-        {likes.slice(0, 6).map((like) => (
-          <article key={like.id}>
-            <div className="library-like-cover">
-              {like.song.cover_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={like.song.cover_url} alt="" />
-              ) : (
-                <Heart size={18} fill="currentColor" />
-              )}
-            </div>
-            <div>
-              <strong>{like.song.title}</strong>
-              <span>{like.song.artist}</span>
-            </div>
-          </article>
-        ))}
-        {!likes.length && !library.isLoading && <p className="library-empty">Aucun like pour le moment. Touchez le cœur dans le lecteur pour sauvegarder un titre.</p>}
-      </div>
-    </div>
+    </main>
   );
+}
+
+function SectionTitle({ kicker, title }: { kicker: string; title: string }) {
+  return <div className={styles.sectionTitle}><span>{kicker}</span><h2>{title}</h2></div>;
+}
+
+function MediaRail({ kicker, title, items }: { kicker: string; title: string; items: Array<{ title: string; subtitle: string; artwork: string; color: string }> }) {
+  return <section className={styles.section}><SectionTitle kicker={kicker} title={title} /><div className={styles.rail}>{items.map((item, index) => <article className={styles.card} key={`${item.title}-${index}`}><Cover {...item} size="card" /><strong>{item.title}</strong><small>{item.subtitle}</small></article>)}</div></section>;
+}
+
+function Cover({ title, artwork, color, size }: { title: string; artwork?: string; color?: string; size: "card" | "row" }) {
+  return <span className={`${styles.cover} ${size === "card" ? styles.cardCover : styles.rowCover}`} style={{ background: color || coverGradients[0] }}>{artwork ? (
+    // Remote artwork hosts are dynamic and already proxied/fallback-managed by the backend.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={artwork} alt="" />
+  ) : <span>{title.slice(0, 1).toUpperCase()}</span>}</span>;
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <p className={styles.empty}>{text}</p>;
+}
+
+function LibrarySkeleton() {
+  return <div className={styles.skeleton} aria-label="Chargement de la bibliothèque">{[0, 1].map((section) => <section key={section}><Skeleton className="h-5 w-40" /><div>{[0, 1, 2].map((item) => <Skeleton key={item} className="h-32 w-32" />)}</div></section>)}</div>;
 }

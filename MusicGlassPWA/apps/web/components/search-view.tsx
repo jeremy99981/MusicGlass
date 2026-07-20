@@ -21,6 +21,7 @@ import { usePlaybackStore } from "@/store/playback-store";
 import styles from "./search-view.module.css";
 
 const FILTERS = ["Tout", "Titres", "Albums", "Artistes"] as const;
+const BROWSE_CATEGORIES = ["Pop", "Rock", "Jazz", "Chill", "Live", "Découvertes"] as const;
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -312,9 +313,7 @@ export function SearchView() {
     <main className={`page ${styles.searchPage}`} aria-labelledby="search-page-title">
       <header className={styles.hero}>
         <div className={styles.heroCopy}>
-          <span className={styles.eyebrow}>Explorer le catalogue</span>
           <h1 id="search-page-title">Recherche</h1>
-          <p>Un artiste, un album ou ce titre que vous avez en tête.</p>
         </div>
         <label className={styles.searchField}>
           <span className={styles.srOnly}>Rechercher dans le catalogue</span>
@@ -328,7 +327,7 @@ export function SearchView() {
             inputProps={{ className: styles.searchNative }}
             onInput={(event) => setQuery(event.currentTarget.value)}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Que voulez-vous écouter ?"
+            placeholder="Artistes, titres, playlists"
             aria-label="Rechercher dans le catalogue"
           />
         </label>
@@ -375,29 +374,52 @@ export function SearchView() {
         </div>
 
         {!query && (
-          <div className={styles.history} aria-label="Recherches récentes">
-            {recentSearches.length > 0 ? recentSearches.map((recentQuery, index) => (
-              <Button
-                type="button"
-                variant="outline"
-                key={recentQuery.toLocaleLowerCase("fr")}
-                onClick={() => setQuery(recentQuery)}
-                style={{ "--item-delay": `${Math.min(index, 7) * 35}ms` } as CSSProperties}
-              >
-                <span className={styles.historyIcon}><History size={18} aria-hidden /></span>
-                <span>{recentQuery}</span>
-                <ArrowUpRight size={17} aria-hidden />
-              </Button>
-            )) : (
-              <div className={styles.emptyHistory}>
-                <span><History size={23} aria-hidden /></span>
-                <div>
-                  <strong>Votre historique apparaîtra ici</strong>
-                  <p>Lancez une recherche pour retrouver vos artistes et albums en un geste.</p>
+          <>
+            <div className={styles.history} aria-label="Recherches récentes">
+              {recentSearches.length > 0 ? recentSearches.map((recentQuery, index) => (
+                <Button
+                  type="button"
+                  variant="outline"
+                  key={recentQuery.toLocaleLowerCase("fr")}
+                  onClick={() => setQuery(recentQuery)}
+                  style={{ "--item-delay": `${Math.min(index, 7) * 35}ms` } as CSSProperties}
+                >
+                  <span className={styles.historyIcon}><History size={18} aria-hidden /></span>
+                  <span>{recentQuery}</span>
+                  <ArrowUpRight size={17} aria-hidden />
+                </Button>
+              )) : (
+                <div className={styles.emptyHistory}>
+                  <span><History size={23} aria-hidden /></span>
+                  <div>
+                    <strong>Votre historique apparaîtra ici</strong>
+                    <p>Lancez une recherche pour retrouver vos artistes et albums en un geste.</p>
+                  </div>
                 </div>
+              )}
+            </div>
+
+            <section className={styles.browseSection} aria-labelledby="browse-title">
+              <h2 id="browse-title">Parcourir par ambiance</h2>
+              <div className={styles.browseGrid}>
+                {BROWSE_CATEGORIES.map((category, index) => {
+                  const artwork = demoTracks[index % demoTracks.length]?.artwork;
+                  return (
+                    <Button
+                      key={category}
+                      type="button"
+                      variant="ghost"
+                      className={styles.browseTile}
+                      onClick={() => setQuery(category)}
+                      style={{ "--browse-artwork": artwork ? `url(${artwork})` : "none" } as CSSProperties}
+                    >
+                      <span>{category}</span>
+                    </Button>
+                  );
+                })}
               </div>
-            )}
-          </div>
+            </section>
+          </>
         )}
 
         {isLoading && query && (

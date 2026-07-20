@@ -27,10 +27,10 @@ export function PlayerControls() {
         aria-pressed={shuffle}
         title={controlsLocked ? "Contrôles réservés à l’hôte" : "Lecture aléatoire"}
       >
-        <Shuffle size={20} />
+        <Shuffle size={21} />
       </Button>
       <Button variant="ghost" className="fp-ctrl-btn" onClick={previous} disabled={controlsLocked} aria-label="Titre précédent">
-        <SkipBack size={24} fill="currentColor" />
+        <SkipBack size={30} fill="currentColor" />
       </Button>
       <Button
         variant="ghost"
@@ -40,10 +40,10 @@ export function PlayerControls() {
         aria-label={controlsLocked ? "Contrôles réservés à l’hôte" : isPlaying ? "Pause" : "Lecture"}
         aria-pressed={isPlaying}
       >
-        {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" />}
+        {isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" />}
       </Button>
       <Button variant="ghost" className="fp-ctrl-btn" onClick={next} disabled={controlsLocked} aria-label="Titre suivant">
-        <SkipForward size={24} fill="currentColor" />
+        <SkipForward size={30} fill="currentColor" />
       </Button>
       <Button
         variant="ghost"
@@ -54,7 +54,7 @@ export function PlayerControls() {
         aria-pressed={repeat !== "off"}
         title={controlsLocked ? "Contrôles réservés à l’hôte" : repeatLabel}
       >
-        <Repeat2 size={20} />
+        <Repeat2 size={21} />
         {repeat === "one" && <span className="fp-repeat-badge">1</span>}
       </Button>
     </div>

@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Alert, AlertIcon, AlertDescription } from "@appica/ui-react/alert";
-import { Badge } from "@appica/ui-react/badge";
-import { Button, buttonVariants } from "@appica/ui-react/button";
-import { Input } from "@appica/ui-react/input";
-import { Check, CircleAlert, Cloud, LoaderCircle, LogIn, RotateCcw, Server, Wifi } from "lucide-react";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import { Bell, Check, ChevronRight, CircleAlert, Clock3, Cloud, FileText, Gauge, HelpCircle, Info, LoaderCircle, LogIn, RotateCcw, Server, Shield, SlidersHorizontal, Users, Wifi } from "lucide-react";
 import Link from "next/link";
 import { getBackendOrigin, normalizeBackendOrigin, probeBackend, setBackendOrigin } from "@/lib/backend-config";
+import styles from "./settings.module.css";
 
 type ConnectionState = "idle" | "testing" | "success" | "error";
 
@@ -16,10 +13,12 @@ export default function SettingsPage() {
   const backendInputRef = useRef<HTMLInputElement>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
   const [message, setMessage] = useState("Aucun test lancé.");
+  const [wifiOnly, setWifiOnly] = useState(true);
+  const [crossfade, setCrossfade] = useState(false);
+  const [newReleases, setNewReleases] = useState(true);
+  const [friendActivity, setFriendActivity] = useState(false);
 
-  useEffect(() => {
-    setBackend(getBackendOrigin());
-  }, []);
+  useEffect(() => setBackend(getBackendOrigin()), []);
 
   async function testConnection(value?: string) {
     const candidate = value ?? backendInputRef.current?.value ?? backend;
@@ -67,59 +66,69 @@ export default function SettingsPage() {
     window.location.reload();
   }
 
-  const StatusIcon = connectionState === "testing" ? LoaderCircle : connectionState === "success" ? Check : connectionState === "error" ? CircleAlert : Wifi;
-  const updateBackend = (value: string) => {
-    setBackend(value);
-    setConnectionState("idle");
-  };
+  const StatusIcon = connectionState === "testing" ? LoaderCircle : connectionState === "success" ? Check : connectionState === "error" ? CircleAlert : Clock3;
 
   return (
-    <div className="page settings-page">
-      <header className="topbar settings-topbar">
-        <div><span className="eyebrow">Connexion distante</span><h1>Réglages</h1></div>
-        <Link className={buttonVariants({ variant: "primary", size: "md", className: "primary-button" })} href="/login"><LogIn size={18} /> Se connecter</Link>
-      </header>
+    <main className={styles.page}>
+      <header className={styles.header}><h1>Réglages</h1></header>
+      <div className={styles.content}>
+        <SettingsSection title="Compte">
+          <Link className={styles.row} href="/login"><span className={styles.avatar}>MG</span><span className={styles.copy}><strong>Invité</strong><small>Non connecté</small></span><ChevronRight /></Link>
+          <Link className={styles.row} href="/login"><IconChip><LogIn /></IconChip><span className={styles.copy}><strong>Se connecter</strong></span><ChevronRight /></Link>
+        </SettingsSection>
 
-      <section className="backend-settings-card">
-        <div className="backend-settings-copy">
-          <Badge className="settings-badge" variant="soft"><Server size={15} /> Backend autonome</Badge>
-          <h2>Connecter ce lecteur au Mac</h2>
-          <p>Indiquez l’adresse HTTPS du tunnel MusicGlass. Le catalogue, l’audio, les comptes et les sessions synchronisées utiliseront tous ce serveur.</p>
-        </div>
-
-        <div className="backend-form">
-          <label htmlFor="backend-origin">Adresse publique du backend</label>
-          <Input
-            id="backend-origin"
-            ref={backendInputRef}
-            className="backend-input-row"
-            inputSize="lg"
-            startSlot={<Cloud size={20} />}
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            placeholder="https://music.example.com"
-            value={backend}
-            onInput={(event) => updateBackend(event.currentTarget.value)}
-            onChange={(event) => updateBackend(event.target.value)}
-          />
-          <Alert className={`backend-status backend-status-${connectionState}`} variant={connectionState === "error" ? "error" : connectionState === "success" ? "success" : "info"} layout="inline" aria-live="polite">
-            <AlertIcon><StatusIcon className={connectionState === "testing" ? "spin" : ""} size={17} /></AlertIcon>
-            <AlertDescription>{message}</AlertDescription>
-          </Alert>
-          <div className="backend-actions">
-            <Button className="secondary-button" variant="outline" type="button" disabled={connectionState === "testing"} onClick={() => void testConnection()}>Tester</Button>
-            <Button className="primary-button" type="button" disabled={connectionState === "testing"} onClick={() => void saveBackend()}>Enregistrer et reconnecter</Button>
-            <Button className="icon-button backend-reset" variant="ghost" size="icon-md" type="button" aria-label="Utiliser le backend du site" onClick={resetBackend}><RotateCcw size={18} /></Button>
+        <section className={styles.section}>
+          <h2>Connexion distante</h2>
+          <div className={styles.backendCard}>
+            <div className={styles.backendTitle}><IconChip><Server /></IconChip><span><strong>Connecter ce lecteur au Mac</strong><small>Backend autonome</small></span></div>
+            <p>Indiquez l’adresse HTTPS du tunnel MusicGlass. Catalogue, audio et sessions utiliseront ce serveur.</p>
+            <label className={styles.backendInput}><Cloud /><input ref={backendInputRef} type="url" inputMode="url" autoCapitalize="none" autoCorrect="off" placeholder="https://music.example.com" value={backend} onChange={(event) => { setBackend(event.target.value); setConnectionState("idle"); }} aria-label="Adresse publique du backend" /></label>
+            <div className={`${styles.status} ${styles[connectionState]}`} role="status" aria-live="polite"><StatusIcon className={connectionState === "testing" ? styles.spin : ""} />{message}</div>
+            <div className={styles.backendActions}><button type="button" disabled={connectionState === "testing"} onClick={() => void testConnection()}>Tester</button><button className={styles.save} type="button" disabled={connectionState === "testing"} onClick={() => void saveBackend()}>Enregistrer</button><button className={styles.reset} type="button" onClick={resetBackend} aria-label="Réinitialiser le backend"><RotateCcw /></button></div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="connection-principles" aria-label="Fonctionnement du backend">
-        <article><span>01</span><strong>Docker sur le Mac</strong><p>API, PostgreSQL et Redis restent sur votre machine.</p></article>
-        <article><span>02</span><strong>Tunnel chiffré</strong><p>Le téléphone accède au Mac sans ouvrir de port sur la box.</p></article>
-        <article><span>03</span><strong>Un seul réglage</strong><p>REST, audio et WebSocket suivent automatiquement la même adresse.</p></article>
-      </section>
-    </div>
+        <SettingsSection title="Lecture">
+          <StaticRow icon={<Gauge />} label="Qualité audio" value="Élevée" />
+          <SwitchRow icon={<Wifi />} label="Télécharger en Wi-Fi uniquement" checked={wifiOnly} onChange={setWifiOnly} />
+          <StaticRow icon={<SlidersHorizontal />} label="Égaliseur" />
+          <SwitchRow icon={<SlidersHorizontal />} label="Crossfade entre les titres" checked={crossfade} onChange={setCrossfade} neutral />
+        </SettingsSection>
+
+        <SettingsSection title="Notifications">
+          <SwitchRow icon={<Bell />} label="Nouvelles sorties" checked={newReleases} onChange={setNewReleases} />
+          <SwitchRow icon={<Users />} label="Activité des amis" checked={friendActivity} onChange={setFriendActivity} neutral />
+        </SettingsSection>
+
+        <SettingsSection title="Confidentialité">
+          <StaticRow icon={<Clock3 />} label="Historique d’écoute" />
+          <StaticRow icon={<Shield />} label="Gérer mes données" neutral />
+        </SettingsSection>
+
+        <SettingsSection title="À propos">
+          <StaticRow icon={<Info />} label="Version" value="1.4.0" />
+          <StaticRow icon={<FileText />} label="Mentions légales" neutral />
+          <StaticRow icon={<HelpCircle />} label="Aide & support" />
+        </SettingsSection>
+
+        <p className={styles.localNote}>Les préférences de lecture et notifications affichées ici sont locales à cet appareil. La connexion au backend reste enregistrée par MusicGlass.</p>
+      </div>
+    </main>
   );
+}
+
+function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section className={styles.section}><h2>{title}</h2><div className={styles.list}>{children}</div></section>;
+}
+
+function IconChip({ children, neutral = false }: { children: ReactNode; neutral?: boolean }) {
+  return <span className={`${styles.iconChip} ${neutral ? styles.neutral : ""}`}>{children}</span>;
+}
+
+function StaticRow({ icon, label, value, neutral = false }: { icon: ReactNode; label: string; value?: string; neutral?: boolean }) {
+  return <button className={styles.row} type="button"><IconChip neutral={neutral}>{icon}</IconChip><span className={styles.copy}><strong>{label}</strong></span>{value && <span className={styles.value}>{value}</span>}<ChevronRight /></button>;
+}
+
+function SwitchRow({ icon, label, checked, onChange, neutral = false }: { icon: ReactNode; label: string; checked: boolean; onChange: (value: boolean) => void; neutral?: boolean }) {
+  return <div className={styles.row}><IconChip neutral={neutral}>{icon}</IconChip><span className={styles.copy}><strong>{label}</strong></span><button className={styles.switch} type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}><span /></button></div>;
 }

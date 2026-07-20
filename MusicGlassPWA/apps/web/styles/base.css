@@ -27,7 +27,7 @@ body {
   background: var(--canvas);
   font-family: var(--font-sans), sans-serif;
   font-size: 15px;
-  line-height: 1.45;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -67,33 +67,33 @@ img {
   overflow: hidden;
   background:
     radial-gradient(circle at 72% 24%, rgb(255 255 255 / 42%), transparent 28%),
-    linear-gradient(145deg, #dfe4ec, #a4aab7);
+    linear-gradient(145deg, #353b80, #232532);
 }
 
 .artwork-fallback::after {
   position: absolute;
   inset: 50% auto auto 50%;
-  color: rgb(23 28 38 / 55%);
+  color: rgb(233 233 237 / 55%);
   font-size: clamp(18px, 4vw, 42px);
   content: "♪";
   transform: translate(-50%, -50%);
 }
 
 :focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--accent-bright);
   outline-offset: 3px;
 }
 
 ::selection {
-  color: #fff;
-  background: var(--ink);
+  color: var(--canvas);
+  background: var(--accent-bright);
 }
 
 .page {
   width: min(100%, 1440px);
   min-width: 0;
   margin: 0 auto;
-  padding: 38px clamp(24px, 4vw, 64px) 150px;
+  padding: 34px clamp(24px, 4vw, 64px) 150px;
 }
 
 .eyebrow {
@@ -122,8 +122,8 @@ img {
 .section-header h2 {
   margin: 0;
   color: var(--ink);
-  font-weight: 800;
-  letter-spacing: -0.045em;
+  font-weight: 500;
+  letter-spacing: -0.015em;
 }
 
 .topbar h1 {
