@@ -4,16 +4,10 @@ import { cleanTrackArtist, inferTrackArtist } from "./catalog";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type Track = {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  artwork: string;
-  duration: number;
-  accent: string;
-  audioUrl?: string;
-};
+// `Track` est défini dans ./catalog (source unique) et ré-exporté ici pour les
+// consommateurs qui importent depuis ce module.
+export type { Track } from "./catalog";
+import type { Track } from "./catalog";
 
 export type HomeItem = {
   id: string;
