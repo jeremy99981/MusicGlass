@@ -123,6 +123,7 @@ func main() {
 		v2.GET("/catalog/playlist/:id", h.WebCatalogPlaylist)
 		v2.GET("/catalog/radio", h.WebCatalogRadio)
 		v2.GET("/catalog/search", h.WebCatalogSearch)
+		v2.GET("/catalog/artwork", h.WebCatalogArtwork)
 		v2.GET("/media/resolve/:track_id", h.WebMediaResolve)
 		v2.GET("/media/stream/:track_id", h.WebMediaStream) // Moved out of protected to allow audio tag to fetch
 		v2.GET("/media/artwork", h.WebMediaArtwork)

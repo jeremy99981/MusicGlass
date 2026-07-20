@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"strings"
 	"sync"
 	"time"
@@ -11,7 +10,6 @@ const (
 	playlistArtworkSearchConcurrency = 4
 	playlistArtworkPositiveTTL       = 6 * time.Hour
 	playlistArtworkNegativeTTL       = 5 * time.Minute
-	playlistArtworkEnrichmentTimeout = 4 * time.Second
 )
 
 type webPlaylist struct {
@@ -220,22 +218,16 @@ func squareThumbnailFrom(renderer map[string]interface{}) (string, bool) {
 
 type playlistArtworkSearch func(query string) (map[string]interface{}, error)
 
-type artworkEnrichmentJob struct {
-	key     string
-	query   string
-	indexes []int
-}
-
-type artworkEnrichmentResult struct {
-	key string
-	url string
-}
-
-func enrichPlaylistArtwork(ctx context.Context, tracks []webTrack, search playlistArtworkSearch, cache *playlistArtworkMemoryCache, concurrency int) []webTrack {
-	enriched := append([]webTrack(nil), tracks...)
-	jobsByKey := map[string]*artworkEnrichmentJob{}
-	for index := range enriched {
-		track := &enriched[index]
+// markPendingArtwork applique, sans aucun appel réseau, les pochettes carrées
+// déjà connues du cache et marque ArtworkPending=true les pistes dont la pochette
+// carrée reste inconnue (cache miss). Le front résout ces dernières à la demande
+// via WebCatalogArtwork, uniquement pour les lignes qui approchent du viewport.
+// Les misses négatifs (recherche connue infructueuse) ne sont pas marqués pending
+// pour éviter au front un appel qui échouera à coup sûr.
+func markPendingArtwork(tracks []webTrack, cache *playlistArtworkMemoryCache) []webTrack {
+	out := append([]webTrack(nil), tracks...)
+	for index := range out {
+		track := &out[index]
 		if !track.needsArtworkEnrichment {
 			continue
 		}
@@ -246,80 +238,27 @@ func enrichPlaylistArtwork(ctx context.Context, tracks []webTrack, search playli
 			}
 			continue
 		}
-		if existing := jobsByKey[key]; existing != nil {
-			existing.indexes = append(existing.indexes, index)
-			continue
-		}
-		jobsByKey[key] = &artworkEnrichmentJob{
-			key:     key,
-			query:   strings.TrimSpace(track.Title + " " + track.Artist),
-			indexes: []int{index},
-		}
+		track.ArtworkPending = true
 	}
-	if len(jobsByKey) == 0 || search == nil {
-		return enriched
-	}
-	if concurrency < 1 {
-		concurrency = 1
-	}
-	if concurrency > len(jobsByKey) {
-		concurrency = len(jobsByKey)
-	}
+	return out
+}
 
-	jobs := make(chan *artworkEnrichmentJob, len(jobsByKey))
-	results := make(chan artworkEnrichmentResult, len(jobsByKey))
-	for _, job := range jobsByKey {
-		jobs <- job
+// resolveTrackArtwork retourne la pochette carrée d'une piste: cache d'abord,
+// sinon une recherche unique dont le résultat (positif ou négatif) est mis en
+// cache. C'est l'unité de résolution utilisée par l'endpoint à la demande.
+func resolveTrackArtwork(track webTrack, cache *playlistArtworkMemoryCache, search playlistArtworkSearch) string {
+	key := artworkCacheKey(track)
+	if artworkURL, ok := cache.get(key); ok {
+		return artworkURL
 	}
-	close(jobs)
-
-	for range concurrency {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case job, ok := <-jobs:
-					if !ok {
-						return
-					}
-					if ctx.Err() != nil {
-						return
-					}
-					select {
-					case <-ctx.Done():
-						return
-					case playlistArtworkSearchLimiter <- struct{}{}:
-					}
-					response, err := search(job.query)
-					<-playlistArtworkSearchLimiter
-					artworkURL := ""
-					if err == nil {
-						artworkURL = matchingSearchArtwork(response, enriched[job.indexes[0]])
-					}
-					cache.set(job.key, artworkURL)
-					results <- artworkEnrichmentResult{key: job.key, url: artworkURL}
-				}
-			}
-		}()
-	}
-
-	pending := len(jobsByKey)
-	for pending > 0 {
-		select {
-		case <-ctx.Done():
-			return enriched
-		case result := <-results:
-			pending--
-			if result.url == "" {
-				continue
-			}
-			for _, index := range jobsByKey[result.key].indexes {
-				enriched[index].Artwork = result.url
-			}
+	artworkURL := ""
+	if search != nil {
+		if response, err := search(strings.TrimSpace(track.Title + " " + track.Artist)); err == nil {
+			artworkURL = matchingSearchArtwork(response, track)
 		}
 	}
-	return enriched
+	cache.set(key, artworkURL)
+	return artworkURL
 }
 
 func replaceVideoArtworkFallbacks(tracks []webTrack, collectionArtwork string) []webTrack {

@@ -7,7 +7,6 @@ import { cleanTrackArtist, inferTrackArtist } from "./catalog";
 // `Track` est défini dans ./catalog (source unique) et ré-exporté ici pour les
 // consommateurs qui importent depuis ce module.
 export type { Track } from "./catalog";
-import type { Track } from "./catalog";
 
 export type HomeItem = {
   id: string;
@@ -316,6 +315,8 @@ export type SearchItem = {
   type: "track" | "video" | "album" | "artist" | "playlist" | "episode" | "unknown";
   artwork: string;
   duration?: number;
+  /** Le backend n'a pas encore résolu la pochette carrée: à résoudre à la demande. */
+  artworkPending?: boolean;
 };
 
 function typedArtistFromRenderer(renderer: any): string {
@@ -485,6 +486,7 @@ export function parsePlaylist(data: any): {
           type: item?.type === "video" ? "video" : "track",
           artwork: extractCanonicalThumbnail(item, item?.type === "video" ? "video" : "track"),
           duration: canonicalDuration(item),
+          artworkPending: Boolean(item?.artwork_pending),
         };
       })
       .filter(Boolean) as SearchItem[];

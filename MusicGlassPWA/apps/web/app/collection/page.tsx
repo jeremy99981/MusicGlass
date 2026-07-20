@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { fetchHome } from "@/lib/api";
 import { handleArtworkError } from "@/lib/artwork";
+import { rememberDetailPreview } from "@/lib/detail-preview";
 import { parseHome, type HomeItem } from "@/lib/youtube";
 import styles from "./collection.module.css";
 
@@ -45,7 +46,12 @@ function CollectionContent() {
       <section className={styles.grid} aria-busy={isLoading}>
         {isLoading && Array.from({ length: 10 }, (_, index) => <div className={styles.skeleton} key={index} />)}
         {!isLoading && items.map((item) => (
-          <Link href={itemHref(item)} className={styles.card} key={`${item.type}-${item.id}`}>
+          <Link
+            href={itemHref(item)}
+            className={styles.card}
+            key={`${item.type}-${item.id}`}
+            onClick={() => rememberDetailPreview(item.id, { title: item.title, subtitle: item.subtitle, artwork: item.artwork })}
+          >
             <span className={styles.artwork}>
               {item.artwork ? <Image src={item.artwork} alt="" fill sizes="(max-width: 639px) 50vw, 20vw" unoptimized onError={handleArtworkError} /> : null}
             </span>

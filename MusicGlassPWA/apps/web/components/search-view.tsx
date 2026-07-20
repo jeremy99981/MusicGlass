@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { fetchSearch } from "@/lib/api";
 import { handleArtworkError } from "@/lib/artwork";
 import { DEFAULT_ACCENT, demoTracks, type Track } from "@/lib/catalog";
+import { rememberDetailPreview } from "@/lib/detail-preview";
 import { clearLocalSearchHistory, readLocalSearchHistory, recordLocalSearch } from "@/lib/search-history";
 import { clearSearchHistory, fetchMe, fetchSearchHistory, recordSearchHistory } from "@/lib/session-api";
 import { parseSearch, type SearchItem } from "@/lib/youtube";
@@ -179,9 +180,9 @@ export function SearchView() {
   };
 
   const handleResultNavigation = (item: SearchItem) => {
-    if (item.type === "artist") router.push(`/artist/${item.id}`);
-    if (item.type === "album") router.push(`/album/${item.id}`);
-    if (item.type === "playlist") router.push(`/playlist/${item.id}`);
+    if (item.type !== "artist" && item.type !== "album" && item.type !== "playlist") return;
+    rememberDetailPreview(item.id, { title: item.title, subtitle: item.artist, artwork: item.artwork });
+    router.push(`/${item.type}/${item.id}`);
   };
 
   const renderTrackRow = (item: SearchItem) => {

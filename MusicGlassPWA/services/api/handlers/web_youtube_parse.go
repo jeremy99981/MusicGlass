@@ -13,6 +13,7 @@ type webTrack struct {
 	Artwork                string `json:"artwork"`
 	Duration               int    `json:"duration"`
 	Accent                 string `json:"accent"`
+	ArtworkPending         bool   `json:"artwork_pending,omitempty"`
 	needsArtworkEnrichment bool
 }
 

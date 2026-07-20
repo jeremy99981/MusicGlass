@@ -21,6 +21,15 @@ export async function fetchPlaylist(id: string) {
   return res.json();
 }
 
+export async function fetchTrackArtwork(title: string, artist: string, signal?: AbortSignal): Promise<string> {
+  const params = new URLSearchParams({ title });
+  if (artist) params.set("artist", artist);
+  const res = await fetch(`${getApiUrl("/catalog/artwork")}?${params.toString()}`, { signal });
+  if (!res.ok) return "";
+  const data = await res.json();
+  return typeof data?.artwork === "string" ? data.artwork : "";
+}
+
 export function getAudioStreamUrl(trackId: string) {
   return getApiUrl(`/media/stream/${trackId}`);
 }

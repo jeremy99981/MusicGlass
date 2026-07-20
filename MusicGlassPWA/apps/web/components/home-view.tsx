@@ -16,6 +16,7 @@ import styles from "./home-view.module.css";
 import { fetchHome } from "@/lib/api";
 import { handleArtworkError } from "@/lib/artwork";
 import { collections, DEFAULT_ACCENT, demoTracks } from "@/lib/catalog";
+import { rememberDetailPreview } from "@/lib/detail-preview";
 import { type HomeItem, parseHome } from "@/lib/youtube";
 import { usePlaybackStore } from "@/store/playback-store";
 
@@ -110,6 +111,7 @@ export function HomeView() {
       return;
     }
     const route = item.type === "artist" ? "artist" : item.type === "album" ? "album" : "playlist";
+    rememberDetailPreview(item.id, { title: item.title, subtitle: item.subtitle, artwork: item.artwork });
     router.push(`/${route}/${encodeURIComponent(item.id)}`);
   };
 

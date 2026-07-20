@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 func TestCanonicalWebPlaylistExtractsTracksForArtworkEnrichment(t *testing.T) {
@@ -37,14 +34,8 @@ func TestCanonicalWebPlaylistExtractsTracksForArtworkEnrichment(t *testing.T) {
 	}
 }
 
-func TestEnrichPlaylistArtworkUsesSquareSearchResultAndKeepsOriginalID(t *testing.T) {
-	tracks := []webTrack{{
-		ID:                     "original-video-id",
-		Title:                  "Tana",
-		Artist:                 "Houari",
-		Artwork:                "https://i.ytimg.com/vi/original-video-id/w400-h225.jpg",
-		needsArtworkEnrichment: true,
-	}}
+func TestResolveTrackArtworkUsesSquareSearchResult(t *testing.T) {
+	track := webTrack{ID: "original-video-id", Title: "Tana", Artist: "Houari"}
 	search := func(query string) (map[string]interface{}, error) {
 		if query != "Tana Houari" {
 			t.Fatalf("unexpected search query %q", query)
@@ -52,72 +43,33 @@ func TestEnrichPlaylistArtworkUsesSquareSearchResultAndKeepsOriginalID(t *testin
 		return searchResponse("different-search-id", "Tana", "Titre • Houari", "https://yt3.ggpht.com/official=s544-c-k-c0x00ffffff-no-rj", 544, 544), nil
 	}
 
-	result := enrichPlaylistArtwork(context.Background(), tracks, search, newPlaylistArtworkMemoryCache(), 4)
-	if result[0].ID != "original-video-id" {
-		t.Fatalf("search result replaced the playback ID: %q", result[0].ID)
-	}
-	if result[0].Artwork != "https://yt3.ggpht.com/official=s544-c-k-c0x00ffffff-no-rj" {
-		t.Fatalf("expected official square artwork, got %q", result[0].Artwork)
+	artwork := resolveTrackArtwork(track, newPlaylistArtworkMemoryCache(), search)
+	if artwork != "https://yt3.ggpht.com/official=s544-c-k-c0x00ffffff-no-rj" {
+		t.Fatalf("expected official square artwork, got %q", artwork)
 	}
 }
 
-func TestEnrichPlaylistArtworkBoundsConcurrencyAndUsesCache(t *testing.T) {
-	tracks := make([]webTrack, 12)
-	for index := range tracks {
-		tracks[index] = webTrack{
-			ID:                     fmt.Sprintf("original-%02d", index),
-			Title:                  fmt.Sprintf("Song %02d", index),
-			Artist:                 "Artist",
-			Artwork:                "https://example.com/video.jpg",
-			needsArtworkEnrichment: true,
-		}
-	}
+func TestResolveTrackArtworkUsesCacheAndAvoidsSecondSearch(t *testing.T) {
+	track := webTrack{Title: "Song", Artist: "Artist"}
 	cache := newPlaylistArtworkMemoryCache()
 	var calls atomic.Int32
-	var inFlight atomic.Int32
-	var maxInFlight atomic.Int32
-	search := func(query string) (map[string]interface{}, error) {
+	search := func(string) (map[string]interface{}, error) {
 		calls.Add(1)
-		current := inFlight.Add(1)
-		for {
-			maximum := maxInFlight.Load()
-			if current <= maximum || maxInFlight.CompareAndSwap(maximum, current) {
-				break
-			}
-		}
-		defer inFlight.Add(-1)
-		time.Sleep(5 * time.Millisecond)
-		title := query[:len(query)-len(" Artist")]
-		return searchResponse("search-id", title, "Titre • Artist", "https://yt3.ggpht.com/cover=s400", 400, 400), nil
+		return searchResponse("search-id", "Song", "Titre • Artist", "https://yt3.ggpht.com/cover=s400", 400, 400), nil
 	}
 
-	first := enrichPlaylistArtwork(context.Background(), tracks, search, cache, 3)
-	if maxInFlight.Load() > 3 {
-		t.Fatalf("expected at most 3 searches in flight, saw %d", maxInFlight.Load())
+	first := resolveTrackArtwork(track, cache, search)
+	second := resolveTrackArtwork(track, cache, search)
+	if first != "https://yt3.ggpht.com/cover=s400" || second != first {
+		t.Fatalf("expected stable cached artwork, got %q then %q", first, second)
 	}
-	if calls.Load() != 12 {
-		t.Fatalf("expected one search per uncached track, got %d", calls.Load())
-	}
-	for _, track := range first {
-		if track.Artwork != "https://yt3.ggpht.com/cover=s400" {
-			t.Fatalf("track was not enriched: %#v", track)
-		}
-	}
-
-	_ = enrichPlaylistArtwork(context.Background(), tracks, search, cache, 3)
-	if calls.Load() != 12 {
-		t.Fatalf("expected second load to use cache, got %d total searches", calls.Load())
+	if calls.Load() != 1 {
+		t.Fatalf("expected the cache to suppress the second search, got %d calls", calls.Load())
 	}
 }
 
-func TestEnrichPlaylistArtworkCachesFailureAndReturnsFallback(t *testing.T) {
-	track := webTrack{
-		ID:                     "original-id",
-		Title:                  "Unavailable",
-		Artist:                 "Artist",
-		Artwork:                "https://i.ytimg.com/vi/original-id/hq720.jpg",
-		needsArtworkEnrichment: true,
-	}
+func TestResolveTrackArtworkCachesFailure(t *testing.T) {
+	track := webTrack{Title: "Unavailable", Artist: "Artist"}
 	cache := newPlaylistArtworkMemoryCache()
 	var calls atomic.Int32
 	search := func(string) (map[string]interface{}, error) {
@@ -125,31 +77,42 @@ func TestEnrichPlaylistArtworkCachesFailureAndReturnsFallback(t *testing.T) {
 		return nil, errors.New("youtube unavailable")
 	}
 
-	first := enrichPlaylistArtwork(context.Background(), []webTrack{track}, search, cache, 2)
-	second := enrichPlaylistArtwork(context.Background(), []webTrack{track}, search, cache, 2)
-	if first[0].Artwork != track.Artwork || second[0].Artwork != track.Artwork {
-		t.Fatal("failed enrichment must preserve the original video fallback")
+	if artwork := resolveTrackArtwork(track, cache, search); artwork != "" {
+		t.Fatalf("failed resolution must return empty artwork, got %q", artwork)
 	}
+	_ = resolveTrackArtwork(track, cache, search)
 	if calls.Load() != 1 {
 		t.Fatalf("expected negative cache to suppress repeated failures, got %d calls", calls.Load())
 	}
 }
 
-func TestEnrichPlaylistArtworkHonorsDeadline(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
-	defer cancel()
-	track := webTrack{ID: "id", Title: "Slow", Artist: "Artist", Artwork: "fallback", needsArtworkEnrichment: true}
-	started := time.Now()
-	result := enrichPlaylistArtwork(ctx, []webTrack{track}, func(string) (map[string]interface{}, error) {
-		time.Sleep(150 * time.Millisecond)
-		return searchResponse("search-id", "Slow", "Titre • Artist", "https://yt3.ggpht.com/slow", 500, 500), nil
-	}, newPlaylistArtworkMemoryCache(), 1)
+func TestMarkPendingArtworkFlagsMissesAndAppliesCacheHits(t *testing.T) {
+	cache := newPlaylistArtworkMemoryCache()
+	cache.set(artworkCacheKey(webTrack{Title: "Known", Artist: "Artist"}), "https://yt3.ggpht.com/known=s400")
+	cache.set(artworkCacheKey(webTrack{Title: "NoArt", Artist: "Artist"}), "") // négatif
 
-	if elapsed := time.Since(started); elapsed > 80*time.Millisecond {
-		t.Fatalf("enrichment blocked beyond its deadline: %s", elapsed)
+	tracks := []webTrack{
+		{ID: "square", Title: "Square", Artist: "Artist", Artwork: "https://album=s544"}, // pas d'enrichissement requis
+		{ID: "known", Title: "Known", Artist: "Artist", Artwork: "video.jpg", needsArtworkEnrichment: true},
+		{ID: "noart", Title: "NoArt", Artist: "Artist", Artwork: "video.jpg", needsArtworkEnrichment: true},
+		{ID: "miss", Title: "Miss", Artist: "Artist", Artwork: "video.jpg", needsArtworkEnrichment: true},
 	}
-	if result[0].Artwork != "fallback" {
-		t.Fatalf("deadline should preserve fallback, got %q", result[0].Artwork)
+
+	result := markPendingArtwork(tracks, cache)
+	if result[0].ArtworkPending {
+		t.Fatal("track with a square artwork must not be marked pending")
+	}
+	if result[1].ArtworkPending || result[1].Artwork != "https://yt3.ggpht.com/known=s400" {
+		t.Fatalf("cache hit must be applied and not pending: %#v", result[1])
+	}
+	if result[2].ArtworkPending {
+		t.Fatal("negatively cached track must not be marked pending")
+	}
+	if !result[3].ArtworkPending {
+		t.Fatal("cache miss must be marked pending for on-demand resolution")
+	}
+	if tracks[3].ArtworkPending {
+		t.Fatal("markPendingArtwork must not mutate the input slice")
 	}
 }
 
