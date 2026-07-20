@@ -82,18 +82,6 @@ importers:
         specifier: ^3.2.3
         version: 3.2.6(@types/node@22.19.21)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)
 
-  packages/api-client: {}
-
-  packages/contracts:
-    dependencies:
-      zod:
-        specifier: ^3.25.64
-        version: 3.25.76
-
-  packages/design-tokens: {}
-
-  packages/test-fixtures: {}
-
 packages:
 
   '@adobe/css-tools@4.5.0':

@@ -7,7 +7,7 @@ import { ButtonGroup } from "@appica/ui-react/button-group";
 import { ScrollArea } from "@appica/ui-react/scroll-area";
 import { Skeleton } from "@appica/ui-react/skeleton";
 import { motion } from "motion/react";
-import { ArrowRight, Play, Settings2, Sparkles } from "lucide-react";
+import { ArrowRight, Play, Sparkles } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,7 +15,7 @@ import { type CSSProperties, useState } from "react";
 import styles from "./home-view.module.css";
 import { fetchHome } from "@/lib/api";
 import { handleArtworkError } from "@/lib/artwork";
-import { collections, demoTracks } from "@/lib/catalog";
+import { collections, DEFAULT_ACCENT, demoTracks } from "@/lib/catalog";
 import { type HomeItem, parseHome } from "@/lib/youtube";
 import { usePlaybackStore } from "@/store/playback-store";
 
@@ -105,7 +105,7 @@ export function HomeView() {
         album: "",
         artwork: item.artwork,
         duration: item.duration || 0,
-        accent: "#176bc1",
+        accent: DEFAULT_ACCENT,
       });
       return;
     }
@@ -138,7 +138,6 @@ export function HomeView() {
           <Avatar className={styles.avatar} aria-hidden="true">
             <AvatarFallback>MG</AvatarFallback>
           </Avatar>
-          <Link className={styles.settings} href="/settings" aria-label="Réglages"><Settings2 size={20} /></Link>
         </div>
       </header>
 

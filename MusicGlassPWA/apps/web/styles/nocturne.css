@@ -2,6 +2,15 @@
 :root {
   --nocturne-gutter: clamp(16px, 5.13vw, 20px);
   --nocturne-bottom-nav: calc(82px + var(--safe-bottom));
+  /* Alias couleur partagés, dérivés des tokens globaux (styles/tokens.css). */
+  --nocturne-bg: var(--canvas);
+  --nocturne-surface: var(--surface);
+  --nocturne-text: var(--ink);
+  --nocturne-muted: var(--muted);
+  --nocturne-accent: var(--accent);
+  --nocturne-accent-soft: var(--accent-bright);
+  --nocturne-accent-light: var(--accent-bright);
+  --nocturne-divider: var(--line);
 }
 
 html,

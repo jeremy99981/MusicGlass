@@ -1,33 +1,12 @@
 import { getApiUrl } from "./backend-config";
-
-function getCookie(name: string) {
-  if (typeof document === "undefined") return "";
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")[1] ?? "";
-}
-
-function saveCSRF(body: unknown) {
-  if (typeof window === "undefined" || !body || typeof body !== "object") return;
-  const token = "csrf_token" in body ? body.csrf_token : null;
-  if (typeof token === "string" && token) {
-    window.localStorage.setItem("musicglass-csrf-token", token);
-  }
-  const accessToken = "access_token" in body ? body.access_token : null;
-  if (typeof accessToken === "string" && accessToken) {
-    window.localStorage.setItem("musicglass-access-token", accessToken);
-  }
-  const refreshToken = "refresh_token" in body ? body.refresh_token : null;
-  if (typeof refreshToken === "string" && refreshToken) {
-    window.localStorage.setItem("musicglass-refresh-token", refreshToken);
-  }
-}
-
-function csrfHeaders(): Record<string, string> {
-  const csrf = getCookie("mg_csrf") || (typeof window !== "undefined" ? window.localStorage.getItem("musicglass-csrf-token") ?? "" : "");
-  return csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {};
-}
+import {
+  clearStoredSession,
+  csrfHeaders,
+  fetchBuiltWithRefresh,
+  fetchWithRefresh,
+  getStoredAccessToken,
+  saveSession,
+} from "./auth-http";
 
 async function parseError(response: Response, fallback: string) {
   try {
@@ -42,51 +21,6 @@ async function parseError(response: Response, fallback: string) {
   }
 }
 
-function clearStoredSession() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem("musicglass-csrf-token");
-  window.localStorage.removeItem("musicglass-access-token");
-  window.localStorage.removeItem("musicglass-refresh-token");
-}
-
-function withAuthorization(init?: RequestInit): RequestInit {
-  const headers = new Headers(init?.headers);
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("musicglass-access-token") : "";
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  return { ...init, headers };
-}
-
-async function refreshSession() {
-  const refreshToken = typeof window !== "undefined" ? window.localStorage.getItem("musicglass-refresh-token") ?? "" : "";
-  const response = await fetch(getApiUrl("/auth/refresh"), {
-    method: "POST",
-    credentials: "include",
-    headers: refreshToken ? { "Content-Type": "application/json" } : undefined,
-    body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined,
-  });
-  if (!response.ok) return false;
-  saveCSRF(await response.json());
-  return true;
-}
-
-async function fetchWithRefresh(input: RequestInfo | URL, init?: RequestInit) {
-  const first = await fetch(input, withAuthorization(init));
-  if (first.status !== 401) return first;
-  const refreshed = await refreshSession();
-  if (!refreshed) return first;
-  return fetch(input, withAuthorization(init));
-}
-
-async function fetchBuiltWithRefresh(build: () => [RequestInfo | URL, RequestInit?]) {
-  const [input, init] = build();
-  const first = await fetch(input, withAuthorization(init));
-  if (first.status !== 401) return first;
-  const refreshed = await refreshSession();
-  if (!refreshed) return first;
-  const [retryInput, retryInit] = build();
-  return fetch(retryInput, withAuthorization(retryInit));
-}
-
 export async function signup(name: string, email: string, password: string) {
   clearStoredSession();
   const response = await fetch(getApiUrl("/auth/signup"), {
@@ -96,7 +30,7 @@ export async function signup(name: string, email: string, password: string) {
     body: JSON.stringify({ name, email, password }),
   });
   if (!response.ok) throw new Error(await parseError(response, "Impossible de créer le compte."));
-  saveCSRF(await response.json());
+  saveSession(await response.json());
 }
 
 export async function login(email: string, password: string) {
@@ -108,7 +42,7 @@ export async function login(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) throw new Error(await parseError(response, "Adresse ou mot de passe incorrect."));
-  saveCSRF(await response.json());
+  saveSession(await response.json());
 }
 
 export async function fetchMe() {
@@ -176,7 +110,4 @@ export async function endSharedSession(code: string) {
   if (!response.ok) throw new Error(await parseError(response, "Impossible de quitter la session."));
 }
 
-export function getStoredAccessToken() {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem("musicglass-access-token") ?? "";
-}
+export { getStoredAccessToken };

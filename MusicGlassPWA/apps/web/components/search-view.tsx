@@ -13,7 +13,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchSearch } from "@/lib/api";
 import { handleArtworkError } from "@/lib/artwork";
-import { demoTracks, type Track } from "@/lib/catalog";
+import { DEFAULT_ACCENT, demoTracks, type Track } from "@/lib/catalog";
 import { clearLocalSearchHistory, readLocalSearchHistory, recordLocalSearch } from "@/lib/search-history";
 import { clearSearchHistory, fetchMe, fetchSearchHistory, recordSearchHistory } from "@/lib/session-api";
 import { parseSearch, type SearchItem } from "@/lib/youtube";
@@ -170,7 +170,7 @@ export function SearchView() {
       album: "",
       artwork: item.artwork,
       duration: item.duration || 0,
-      accent: "#263443",
+      accent: DEFAULT_ACCENT,
     };
 
     // Search results are matches, not a coherent playlist. Let YouTube Music's

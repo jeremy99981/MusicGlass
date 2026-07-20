@@ -35,9 +35,10 @@ services:
         condition: service_healthy
 
   # ─── Backend Go (Gin + Air hot-reload) ───────────────────────────────────
+  # Source unique du backend : MusicGlassPWA/services/api (surensemble canonique).
   backend:
     build:
-      context: ./backend
+      context: ../../MusicGlassPWA/services/api
       dockerfile: Dockerfile
     container_name: dev_backend
     restart: unless-stopped
@@ -52,13 +53,9 @@ services:
       PORT:        ${BACKEND_PORT:-8081}
     ports:
       - "${BACKEND_PORT:-8081}:8081"
-    volumes:
-      - ./backend:/app          # hot-reload : Air surveille les fichiers montés
-      - go_cache:/root/.cache   # cache de build entre les restarts
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
-  go_cache:

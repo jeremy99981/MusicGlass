@@ -1,4 +1,5 @@
 import { getApiUrl, resolveBackendResource } from "./backend-config";
+import { csrfHeaders, fetchWithRefresh } from "./auth-http";
 
 export { getApiBase, getWebSocketBaseUrl } from "./backend-config";
 
@@ -92,54 +93,6 @@ export async function fetchRadio(track: { id: string; title: string; artist: str
   const res = await fetch(`${getApiUrl("/catalog/radio")}?${params.toString()}`, { signal });
   if (!res.ok) throw new Error("Failed to fetch radio queue");
   return res.json() as Promise<{ seed: unknown; tracks: unknown[]; source: string }>;
-}
-
-function getCookie(name: string) {
-  if (typeof document === "undefined") return "";
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")[1] ?? "";
-}
-
-function csrfHeaders(): Record<string, string> {
-  const csrf = getCookie("mg_csrf") || (typeof window !== "undefined" ? window.localStorage.getItem("musicglass-csrf-token") ?? "" : "");
-  return csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {};
-}
-
-async function refreshWebSession() {
-  const refreshToken = typeof window !== "undefined" ? window.localStorage.getItem("musicglass-refresh-token") ?? "" : "";
-  const response = await fetch(getApiUrl("/auth/refresh"), {
-    method: "POST",
-    credentials: "include",
-    headers: refreshToken ? { "Content-Type": "application/json" } : undefined,
-    body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined,
-  });
-  if (!response.ok) return false;
-  try {
-    const body = await response.json();
-    if (typeof body?.csrf_token === "string") window.localStorage.setItem("musicglass-csrf-token", body.csrf_token);
-    if (typeof body?.access_token === "string") window.localStorage.setItem("musicglass-access-token", body.access_token);
-    if (typeof body?.refresh_token === "string") window.localStorage.setItem("musicglass-refresh-token", body.refresh_token);
-  } catch {
-    // A refreshed cookie is enough for subsequent same-origin calls.
-  }
-  return true;
-}
-
-function withAuthorization(init?: RequestInit): RequestInit {
-  const headers = new Headers(init?.headers);
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("musicglass-access-token") : "";
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  return { ...init, headers };
-}
-
-async function fetchWithRefresh(input: RequestInfo | URL, init?: RequestInit) {
-  const first = await fetch(input, withAuthorization(init));
-  if (first.status !== 401) return first;
-  const refreshed = await refreshWebSession();
-  if (!refreshed) return first;
-  return fetch(input, withAuthorization(init));
 }
 
 export type LibrarySong = {

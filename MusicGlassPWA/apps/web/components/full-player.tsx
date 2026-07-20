@@ -5,6 +5,7 @@ import { Button } from "@appica/ui-react/button";
 import { Skeleton } from "@appica/ui-react/skeleton";
 import { useEffect, useState, type CSSProperties } from "react";
 import { addLibraryLike } from "@/lib/api";
+import { DEFAULT_ACCENT } from "@/lib/catalog";
 import { usePlaybackStore } from "@/store/playback-store";
 import { PlayerHeader } from "./player/player-header";
 import { PlayerArtwork } from "./player/player-artwork";
@@ -76,7 +77,7 @@ export function FullPlayer() {
       className="full-player"
       style={{
         "--player-artwork": `url(${track.artwork})`,
-        "--player-accent": track.accent || "#176bc1",
+        "--player-accent": track.accent || DEFAULT_ACCENT,
       } as CSSProperties}
       role="dialog"
       aria-modal="true"

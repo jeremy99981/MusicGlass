@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { getWebSocketBaseUrl } from "@/lib/api";
 import { getStoredAccessToken } from "@/lib/session-api";
-import type { Track } from "@/lib/catalog";
+import { DEFAULT_ACCENT, type Track } from "@/lib/catalog";
 import { usePlaybackStore } from "@/store/playback-store";
 import { useSharedSessionStore, type SharedParticipant } from "@/store/shared-session-store";
 
@@ -38,7 +38,7 @@ function songToTrack(song: SongInfo): Track {
     album: "",
     artwork: song.cover_urls?.[0] || song.cover_url || "",
     duration: song.duration_ms ? song.duration_ms / 1000 : 0,
-    accent: "#263443",
+    accent: DEFAULT_ACCENT,
   };
 }
 

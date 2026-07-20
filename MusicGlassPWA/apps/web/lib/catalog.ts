@@ -9,6 +9,9 @@ export type Track = {
   audioUrl?: string;
 };
 
+/** Accent par défaut appliqué à une piste dépourvue de couleur dédiée. */
+export const DEFAULT_ACCENT = "#263443";
+
 const INVALID_ARTIST_LABELS = new Set([
   "artiste inconnu",
   "unknown artist",
@@ -47,7 +50,7 @@ export function normalizeTrack(input: Partial<Track> & { id: string; title?: str
     album: input.album || "",
     artwork: input.artwork || "",
     duration,
-    accent: input.accent || "#263443",
+    accent: input.accent || DEFAULT_ACCENT,
     audioUrl: input.audioUrl,
   };
 }

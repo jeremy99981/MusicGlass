@@ -1,12 +1,5 @@
 .detailPage,
 .artistPage {
-  --nocturne-bg: #161826;
-  --nocturne-surface: #232532;
-  --nocturne-text: #e9e9ed;
-  --nocturne-muted: #9397ab;
-  --nocturne-accent: #9184d9;
-  --nocturne-accent-light: #d2cefd;
-  --nocturne-divider: rgb(233 233 237 / 16%);
   position: relative;
   width: 100%;
   min-height: 100dvh;

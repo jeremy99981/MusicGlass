@@ -1,10 +1,4 @@
 .searchPage {
-  --nocturne-bg: #161826;
-  --nocturne-surface: #232532;
-  --nocturne-text: #e9e9ed;
-  --nocturne-muted: #9397ab;
-  --nocturne-accent: #9184d9;
-  --nocturne-accent-soft: #d2cefd;
   display: grid;
   min-width: 0;
   gap: 22px;

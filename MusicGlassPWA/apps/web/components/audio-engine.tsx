@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { usePlaybackStore } from "@/store/playback-store";
 import { fetchRadio, getAudioStreamUrl, getMediaArtworkUrl, invalidateAudioStream, resolveAudioStream } from "@/lib/api";
-import { hasReliableTrackMetadata, normalizeTrack, uniqueTracks, type Track } from "@/lib/catalog";
+import { DEFAULT_ACCENT, hasReliableTrackMetadata, normalizeTrack, uniqueTracks, type Track } from "@/lib/catalog";
 import { resumeMediaElement } from "@/lib/audio-resume";
 import { activatePlaybackAudioSession } from "@/lib/audio-session";
 import { highResolutionArtwork } from "@/lib/youtube";
@@ -24,7 +24,7 @@ function radioItemToTrack(item: unknown): Track | null {
     album: typeof value.album === "string" ? value.album : "",
     artwork: typeof value.artwork === "string" ? value.artwork : "",
     duration: typeof value.duration === "number" ? value.duration : 0,
-    accent: typeof value.accent === "string" ? value.accent : "#263443",
+    accent: typeof value.accent === "string" ? value.accent : DEFAULT_ACCENT,
   });
   return hasReliableTrackMetadata(track) ? track : null;
 }
@@ -175,9 +175,13 @@ export function AudioEngine() {
       setPlaying(false);
       setStatus("error", "Lecture impossible. Touchez Lecture pour réessayer.");
     } finally {
-      if (playAttemptRef.current === attempt) suppressInternalPauseRef.current = false;
-      recoveryInProgressRef.current = false;
-      resumeInFlightRef.current = false;
+      // Only clear the shared flags if a newer resume/track change hasn't already
+      // superseded this attempt, otherwise we would wipe the successor's state.
+      if (playAttemptRef.current === attempt) {
+        suppressInternalPauseRef.current = false;
+        recoveryInProgressRef.current = false;
+        resumeInFlightRef.current = false;
+      }
     }
   }, [publishCurrentMediaMetadata, setPlaying, setStatus, volume]);
 
@@ -380,6 +384,15 @@ export function AudioEngine() {
     if (trackChanged) {
       retriedTrackRef.current = null;
       authoritativeDurationRef.current = null;
+      // A newly selected track must supersede any resume still in flight for the
+      // previous one (e.g. the visibility/pageshow resume fired when the app
+      // returns to the foreground). Without this, that in-flight resume keeps
+      // resumeInFlightRef truthy, so this track's own resumePlayback() would
+      // early-return and the old audio would keep playing under the new artwork.
+      playAttemptRef.current += 1;
+      resumeInFlightRef.current = false;
+      recoveryInProgressRef.current = false;
+      advancedSourceRef.current = null;
     }
 
     const prepareAndMaybePlay = async () => {

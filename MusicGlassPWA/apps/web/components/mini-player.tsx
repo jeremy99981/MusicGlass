@@ -6,6 +6,7 @@ import { Heart, ListMusic, Pause, Play, SkipBack, SkipForward } from "lucide-rea
 import Image from "next/image";
 import { addLibraryLike } from "@/lib/api";
 import { handleArtworkError } from "@/lib/artwork";
+import { DEFAULT_ACCENT } from "@/lib/catalog";
 import { usePlaybackStore } from "@/store/playback-store";
 import { useSharedSessionStore } from "@/store/shared-session-store";
 import { AuthRequiredDialog } from "./auth-required-dialog";
@@ -57,7 +58,7 @@ export function MiniPlayer() {
       aria-label="Lecteur audio"
       style={{
         "--mini-artwork": `url(${track.artwork})`,
-        "--mini-accent": track.accent || "#176bc1",
+        "--mini-accent": track.accent || DEFAULT_ACCENT,
       } as CSSProperties}
     >
       <Button
